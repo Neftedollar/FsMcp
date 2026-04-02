@@ -6,9 +6,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="FsMcp.Server" />
+    <InternalsVisibleTo Include="FsMcp.Client" />
+    <InternalsVisibleTo Include="FsMcp.Core.Tests" />
+    <InternalsVisibleTo Include="FsMcp.Server.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="Validation.fs" />
     <Compile Include="Types.fs" />
     <Compile Include="Serialization.fs" />
+    <Compile Include="Interop.fs" />
   </ItemGroup>
 
   <ItemGroup>
