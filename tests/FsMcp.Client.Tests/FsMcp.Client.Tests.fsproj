@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <Compile Include="ClientTests.fs" />
+    <Compile Include="McpClientTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

@@ -6,11 +6,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Client.fs" />
+    <Compile Include="ClientTransport.fs" />
+    <Compile Include="McpClient.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../FsMcp.Core/FsMcp.Core.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
   </ItemGroup>
 
 </Project>
