@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="Validation.fs" />
     <Compile Include="Types.fs" />
+    <Compile Include="Serialization.fs" />
   </ItemGroup>
 
   <ItemGroup>

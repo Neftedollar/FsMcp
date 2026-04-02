@@ -9,8 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Generators.fs" />
     <Compile Include="ValidationTests.fs" />
     <Compile Include="TypesTests.fs" />
+    <Compile Include="PropertyTests.fs" />
+    <Compile Include="SerializationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
