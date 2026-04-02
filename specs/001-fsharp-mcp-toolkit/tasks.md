@@ -24,14 +24,14 @@
 
 **Purpose**: Solution and project initialization
 
-- [ ] T001 Create solution file at `FsMcp.sln` and directory structure (`src/`, `tests/`)
-- [ ] T002 Create `src/FsMcp.Core/FsMcp.Core.fsproj` with dependencies: `ModelContextProtocol`, `Microsoft.Extensions.Logging.Abstractions`, `System.Text.Json`
-- [ ] T003 [P] Create `src/FsMcp.Server/FsMcp.Server.fsproj` with dependencies: `FsMcp.Core`, `Microsoft.Extensions.Hosting`
-- [ ] T004 [P] Create `src/FsMcp.Client/FsMcp.Client.fsproj` with dependency: `FsMcp.Core`
-- [ ] T005 [P] Create `tests/FsMcp.Core.Tests/FsMcp.Core.Tests.fsproj` with dependencies: `FsMcp.Core`, `Expecto`, `Expecto.FsCheck`, `FsCheck`
-- [ ] T006 [P] Create `tests/FsMcp.Server.Tests/FsMcp.Server.Tests.fsproj` with dependencies: `FsMcp.Server`, `FsMcp.Core`, `Expecto`, `Expecto.FsCheck`, `FsCheck`
-- [ ] T007 [P] Create `tests/FsMcp.Client.Tests/FsMcp.Client.Tests.fsproj` with dependencies: `FsMcp.Client`, `FsMcp.Core`, `Expecto`, `Expecto.FsCheck`, `FsCheck`
-- [ ] T008 Verify `dotnet build` compiles the solution and `dotnet test` runs (empty test projects)
+- [x] T001 Create solution file at `FsMcp.sln` and directory structure (`src/`, `tests/`)
+- [x] T000 Create `src/FsMcp.Core/FsMcp.Core.fsproj` with dependencies: `ModelContextProtocol`, `Microsoft.Extensions.Logging.Abstractions`, `System.Text.Json`
+- [x] T000 [P] Create `src/FsMcp.Server/FsMcp.Server.fsproj` with dependencies: `FsMcp.Core`, `Microsoft.Extensions.Hosting`
+- [x] T000 [P] Create `src/FsMcp.Client/FsMcp.Client.fsproj` with dependency: `FsMcp.Core`
+- [x] T000 [P] Create `tests/FsMcp.Core.Tests/FsMcp.Core.Tests.fsproj` with dependencies: `FsMcp.Core`, `Expecto`, `Expecto.FsCheck`, `FsCheck`
+- [x] T000 [P] Create `tests/FsMcp.Server.Tests/FsMcp.Server.Tests.fsproj` with dependencies: `FsMcp.Server`, `FsMcp.Core`, `Expecto`, `Expecto.FsCheck`, `FsCheck`
+- [x] T000 [P] Create `tests/FsMcp.Client.Tests/FsMcp.Client.Tests.fsproj` with dependencies: `FsMcp.Client`, `FsMcp.Core`, `Expecto`, `Expecto.FsCheck`, `FsCheck`
+- [x] T000 Verify `dotnet build` compiles the solution and `dotnet test` runs (empty test projects)
 
 **Checkpoint**: Solution builds, empty test runner executes
 
@@ -45,15 +45,15 @@
 
 ### Tests for Foundational
 
-- [ ] T009 Write Expecto tests for identifier smart constructors (ToolName, ResourceUri, PromptName, MimeType, ServerName, ServerVersion — valid/invalid/edge cases) in `tests/FsMcp.Core.Tests/ValidationTests.fs`
-- [ ] T010 [P] Write Expecto tests for Content type construction helpers (text, image, resource) in `tests/FsMcp.Core.Tests/TypesTests.fs`
+- [x] T000 Write Expecto tests for identifier smart constructors (ToolName, ResourceUri, PromptName, MimeType, ServerName, ServerVersion — valid/invalid/edge cases) in `tests/FsMcp.Core.Tests/ValidationTests.fs`
+- [x] T010 [P] Write Expecto tests for Content type construction helpers (text, image, resource) in `tests/FsMcp.Core.Tests/TypesTests.fs`
 
 ### Implementation for Foundational
 
-- [ ] T011 Implement ValidationError DU and identifier single-case DUs (ToolName, ResourceUri, PromptName, MimeType, ServerName, ServerVersion) with smart constructors in `src/FsMcp.Core/Validation.fs`
-- [ ] T012 Implement domain types: Content, ResourceContents, McpRole, McpMessage, McpError, ToolDefinition, ResourceDefinition, PromptArgument, PromptDefinition in `src/FsMcp.Core/Types.fs`
-- [ ] T013 Implement Content convenience constructors (Content.text, Content.image, Content.resource) in `src/FsMcp.Core/Types.fs`
-- [ ] T014 Verify T009 and T010 tests pass — red-green cycle complete
+- [x] T010 Implement ValidationError DU and identifier single-case DUs (ToolName, ResourceUri, PromptName, MimeType, ServerName, ServerVersion) with smart constructors in `src/FsMcp.Core/Validation.fs`
+- [x] T010 Implement domain types: Content, ResourceContents, McpRole, McpMessage, McpError, ToolDefinition, ResourceDefinition, PromptArgument, PromptDefinition in `src/FsMcp.Core/Types.fs`
+- [x] T010 Implement Content convenience constructors (Content.text, Content.image, Content.resource) in `src/FsMcp.Core/Types.fs`
+- [x] T010 Verify T009 and T010 tests pass — red-green cycle complete
 
 **Checkpoint**: Foundation ready — all domain types exist, smart constructors validated, tests green
 

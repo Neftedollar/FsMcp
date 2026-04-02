@@ -126,11 +126,11 @@ module McpClient =
         }
 
     /// Call a tool by name with arguments.
-    let callTool (client: McpClient) (toolName: ToolName) (args: Map<string, obj>) : Task<Result<Content list, McpError>> =
+    let callTool (client: McpClient) (toolName: ToolName) (args: Map<string, System.Text.Json.JsonElement>) : Task<Result<Content list, McpError>> =
         task {
             try
                 let dict = Dictionary<string, obj>()
-                args |> Map.iter (fun k v -> dict.[k] <- v)
+                args |> Map.iter (fun k v -> dict.[k] <- (v :> obj))
                 let! result =
                     client.Client.CallToolAsync(
                         ToolName.value toolName,
@@ -268,7 +268,7 @@ module McpClientAsync =
         McpClient.listTools client |> Async.AwaitTask
 
     /// Call a tool by name with arguments.
-    let callTool (client: McpClient) (toolName: ToolName) (args: Map<string, obj>) : Async<Result<Content list, McpError>> =
+    let callTool (client: McpClient) (toolName: ToolName) (args: Map<string, System.Text.Json.JsonElement>) : Async<Result<Content list, McpError>> =
         McpClient.callTool client toolName args |> Async.AwaitTask
 
     /// List available resources.
