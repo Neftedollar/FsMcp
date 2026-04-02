@@ -179,6 +179,14 @@ function in the library has at least one corresponding test.
   The system MUST preserve the raw data and return a typed "unknown message"
   variant, not discard it.
 
+## Clarifications
+
+### Session 2026-04-02
+
+- Q: Primary async type for public API — `Async<'T>` or `Task<'T>`? → A: `Task<'T>` primary (matches underlying SDK); provide `Async` convenience wrappers where useful.
+- Q: Project structure — single or multi-project? → A: Three projects — `FsMcp.Core` (types), `FsMcp.Server`, `FsMcp.Client`.
+- Q: Built-in structured logging or logging only via middleware? → A: Built-in via `Microsoft.Extensions.Logging`; library internals emit structured logs. User middleware handles application-level logging.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -205,10 +213,15 @@ function in the library has at least one corresponding test.
   property-based tests with custom `Arbitrary` generators for domain types.
 - **FR-010**: Library MUST support both stdio and SSE/HTTP transports
   (as provided by the underlying SDK).
-- **FR-011**: All I/O operations MUST be asynchronous (`Async<'T>` or
-  `Task<'T>`).
+- **FR-011**: All I/O operations MUST be asynchronous. The primary public
+  API MUST use `Task<'T>` to match the underlying SDK. `Async<'T>`
+  convenience wrappers SHOULD be provided where useful.
 - **FR-012**: Error paths MUST use `Result<'T, 'E>` for expected failures;
   exceptions are reserved for unexpected/unrecoverable errors only.
+- **FR-013**: Library MUST emit structured logs for internal operations
+  (startup, transport events, errors) via `Microsoft.Extensions.Logging`.
+  Users control the logging provider; application-level logging is a
+  middleware concern.
 
 ### Key Entities
 
@@ -259,3 +272,7 @@ function in the library has at least one corresponding test.
 - No GUI or visual tooling is in scope — this is a code-only library.
 - NuGet packaging and publishing are out of scope for v1 (the library is
   consumed as a project reference initially).
+- The library is structured as three projects: `FsMcp.Core` (domain types
+  and serialization), `FsMcp.Server` (server builder DSL and middleware),
+  and `FsMcp.Client` (client wrapper). Each has a corresponding test
+  project.
