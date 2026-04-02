@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <GenerateProgramFile>false</GenerateProgramFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="TestServerTests.fs" />
+    <Compile Include="ExpectTests.fs" />
+    <Compile Include="McpArbitrariesTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/FsMcp.Testing/FsMcp.Testing.fsproj" />
+    <ProjectReference Include="../../src/FsMcp.Core/FsMcp.Core.fsproj" />
+    <ProjectReference Include="../../src/FsMcp.Server/FsMcp.Server.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Expecto" Version="10.2.3" />
+    <PackageReference Include="Expecto.FsCheck" Version="10.2.3" />
+    <PackageReference Include="FsCheck" Version="2.16.6" />
+    <PackageReference Include="YoloDev.Expecto.TestSdk" Version="0.15.5" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+  </ItemGroup>
+
+</Project>
