@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="Handlers.fs" />
     <Compile Include="Server.fs" />
+    <Compile Include="Middleware.fs" />
   </ItemGroup>
 
   <ItemGroup>
