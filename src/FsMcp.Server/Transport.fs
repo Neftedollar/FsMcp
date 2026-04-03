@@ -11,91 +11,177 @@ open FsMcp.Core
 open FsMcp.Core.Validation
 open ModelContextProtocol.Server
 open ModelContextProtocol.Protocol
+open Microsoft.AspNetCore.Builder
 
 /// Functions for running an MCP server from a ServerConfig.
 module Server =
 
-    /// Create an SDK McpServerTool from an F# ToolDefinition.
+    // ────────────────────────────────────────────────
+    //  Tool bridge
+    // ────────────────────────────────────────────────
+
     let private createSdkTool (td: ToolDefinition) : McpServerTool =
         let handler =
-            Func<McpServer, Dictionary<string, JsonElement>, System.Threading.CancellationToken, Task<CallToolResult>>(
-                fun _server args ct ->
+            Func<McpServer, Dictionary<string, JsonElement>, Threading.CancellationToken, Task<CallToolResult>>(
+                fun _server args _ct ->
                     task {
                         let map =
                             if isNull args then Map.empty
-                            else
-                                args
-                                |> Seq.map (fun kv -> kv.Key, kv.Value.Clone())
-                                |> Map.ofSeq
-                        let! result = td.Handler map
-                        match result with
-                        | Ok contents ->
-                            let sdkContent =
-                                contents
-                                |> List.map Interop.toSdkContentBlock
-                                |> List.toArray
-                            return CallToolResult(Content = sdkContent)
-                        | Error err ->
-                            let errorText =
-                                match err with
-                                | McpError.TransportError msg -> msg
-                                | McpError.ProtocolError (code, msg) -> $"[{code}] {msg}"
-                                | McpError.HandlerException ex -> ex.Message
-                                | McpError.ValidationFailed errs -> $"Validation failed: %A{errs}"
-                                | McpError.ToolNotFound tn -> $"Tool not found: {ToolName.value tn}"
-                                | McpError.ResourceNotFound ru -> $"Resource not found: {ResourceUri.value ru}"
-                                | McpError.PromptNotFound pn -> $"Prompt not found: {PromptName.value pn}"
+                            else args |> Seq.map (fun kv -> kv.Key, kv.Value.Clone()) |> Map.ofSeq
+                        try
+                            let! result = td.Handler map
+                            match result with
+                            | Ok contents ->
+                                return CallToolResult(
+                                    Content = (contents |> List.map Interop.toSdkContentBlock |> List.toArray))
+                            | Error err ->
+                                return CallToolResult(
+                                    Content = [| TextContentBlock(Text = $"%A{err}") |],
+                                    IsError = true)
+                        with ex ->
                             return CallToolResult(
-                                Content = [| TextContentBlock(Text = errorText) |],
+                                Content = [| TextContentBlock(Text = ex.Message) |],
                                 IsError = true)
                     })
-        let options = McpServerToolCreateOptions(
-            Name = ToolName.value td.Name,
-            Description = td.Description)
-        McpServerTool.Create(handler :> Delegate, options)
+        McpServerTool.Create(
+            handler :> Delegate,
+            McpServerToolCreateOptions(
+                Name = ToolName.value td.Name,
+                Description = td.Description))
 
-    /// Register tools from ServerConfig with the SDK builder.
-    let private registerTools (builder: IMcpServerBuilder) (tools: ToolDefinition list) =
-        if not (List.isEmpty tools) then
-            let sdkTools = tools |> List.map createSdkTool
-            builder.WithTools(sdkTools) |> ignore
+    // ────────────────────────────────────────────────
+    //  Resource bridge
+    // ────────────────────────────────────────────────
 
-    /// Run the MCP server with the given configuration.
-    /// This starts the server and blocks until it's shut down.
+    let private createSdkResource (rd: ResourceDefinition) : McpServerResource =
+        let uriStr = ResourceUri.value rd.Uri
+        let handler =
+            Func<McpServer, Threading.CancellationToken, Task<ReadResourceResult>>(
+                fun _server _ct ->
+                    task {
+                        let! result = rd.Handler Map.empty
+                        match result with
+                        | Ok rc ->
+                            let sdkRc : ResourceContents =
+                                match rc with
+                                | FsMcp.Core.TextResource (uri, mime, text) ->
+                                    TextResourceContents(
+                                        Uri = ResourceUri.value uri,
+                                        MimeType = MimeType.value mime,
+                                        Text = text) :> ResourceContents
+                                | FsMcp.Core.BlobResource (uri, mime, data) ->
+                                    BlobResourceContents(
+                                        Uri = ResourceUri.value uri,
+                                        MimeType = MimeType.value mime,
+                                        Blob = ReadOnlyMemory(data)) :> ResourceContents
+                            return ReadResourceResult(Contents = [| sdkRc |])
+                        | Error err ->
+                            return ReadResourceResult(Contents = [| TextResourceContents(
+                                Uri = uriStr, Text = $"Error: %A{err}") :> ResourceContents |])
+                    })
+        let options = McpServerResourceCreateOptions(
+            Name = rd.Name,
+            Description = (rd.Description |> Option.defaultValue ""),
+            UriTemplate = uriStr)
+        match rd.MimeType with
+        | Some m -> options.MimeType <- MimeType.value m
+        | None -> ()
+        McpServerResource.Create(handler :> Delegate, options)
+
+    // ────────────────────────────────────────────────
+    //  Prompt bridge
+    // ────────────────────────────────────────────────
+
+    let private createSdkPrompt (pd: PromptDefinition) : McpServerPrompt =
+        let handler =
+            Func<McpServer, Dictionary<string, string>, Threading.CancellationToken, Task<GetPromptResult>>(
+                fun _server args _ct ->
+                    task {
+                        let map =
+                            if isNull args then Map.empty
+                            else args |> Seq.map (fun kv -> kv.Key, kv.Value) |> Map.ofSeq
+                        let! result = pd.Handler map
+                        match result with
+                        | Ok messages ->
+                            let sdkMsgs =
+                                messages
+                                |> List.map (fun msg ->
+                                    PromptMessage(
+                                        Role = Interop.toSdkRole msg.Role,
+                                        Content = Interop.toSdkContentBlock msg.Content))
+                                |> List.toArray
+                            return GetPromptResult(
+                                Messages = sdkMsgs,
+                                Description = (pd.Description |> Option.defaultValue ""))
+                        | Error err ->
+                            return GetPromptResult(
+                                Messages = [| PromptMessage(
+                                    Role = Role.Assistant,
+                                    Content = TextContentBlock(Text = $"Error: %A{err}")) |])
+                    })
+        let options = McpServerPromptCreateOptions(
+            Name = PromptName.value pd.Name,
+            Description = (pd.Description |> Option.defaultValue ""))
+        McpServerPrompt.Create(handler :> Delegate, options)
+
+    // ────────────────────────────────────────────────
+    //  Registration
+    // ────────────────────────────────────────────────
+
+    let private registerAll (builder: IMcpServerBuilder) (config: ServerConfig) =
+        if not (List.isEmpty config.Tools) then
+            builder.WithTools(config.Tools |> List.map createSdkTool) |> ignore
+        if not (List.isEmpty config.Resources) then
+            builder.WithResources(
+                config.Resources |> List.map createSdkResource :> IEnumerable<McpServerResource>) |> ignore
+        if not (List.isEmpty config.Prompts) then
+            builder.WithPrompts(config.Prompts |> List.map createSdkPrompt) |> ignore
+
+    // ────────────────────────────────────────────────
+    //  Run (stdio)
+    // ────────────────────────────────────────────────
+
+    /// Run the MCP server over stdio. Blocks until shutdown.
     let run (config: ServerConfig) : Task<unit> =
         task {
             let hostBuilder = Host.CreateApplicationBuilder()
-
-            // Configure logging to stderr for stdio transport
-            match config.Transport with
-            | Stdio ->
-                hostBuilder.Logging.AddConsole(fun options ->
-                    options.LogToStandardErrorThreshold <- LogLevel.Trace
-                ) |> ignore
-            | Http _ ->
-                hostBuilder.Logging.AddConsole() |> ignore
-
+            hostBuilder.Logging.AddConsole(fun opts ->
+                opts.LogToStandardErrorThreshold <- LogLevel.Trace) |> ignore
             hostBuilder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
 
-            // Configure MCP server
             let mcpBuilder = hostBuilder.Services.AddMcpServer()
+            mcpBuilder.WithStdioServerTransport() |> ignore
+            registerAll mcpBuilder config
 
-            // Configure transport
-            match config.Transport with
-            | Stdio ->
-                mcpBuilder.WithStdioServerTransport() |> ignore
-            | Http _ ->
-                // Use StreamServerTransport as fallback; HTTP requires ASP.NET integration
-                mcpBuilder.WithStdioServerTransport() |> ignore
-
-            // Register tools
-            registerTools mcpBuilder config.Tools
-
-            // Build and run
-            let host = hostBuilder.Build()
-            do! host.RunAsync()
+            do! hostBuilder.Build().RunAsync()
         }
 
-    /// Run the MCP server as an Async computation.
+    /// Run the MCP server over stdio as an Async computation.
     let runAsync (config: ServerConfig) : Async<unit> =
         run config |> Async.AwaitTask
+
+    // ────────────────────────────────────────────────
+    //  Run (HTTP) — requires ASP.NET Core
+    // ────────────────────────────────────────────────
+
+    /// Run the MCP server over HTTP (Streamable HTTP + SSE).
+    /// Requires the ModelContextProtocol.AspNetCore package.
+    let runHttp (config: ServerConfig) (endpoint: string option) (url: string) : Task<unit> =
+        task {
+            let builder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder()
+            builder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
+
+            let mcpBuilder = builder.Services.AddMcpServer()
+            mcpBuilder.WithHttpTransport() |> ignore
+            registerAll mcpBuilder config
+
+            let app = builder.Build()
+            let route = endpoint |> Option.defaultValue "/"
+            app.MapMcp(route) |> ignore
+            app.Urls.Add(url)
+            do! app.RunAsync()
+        }
+
+    /// Run the MCP server over HTTP as an Async computation.
+    let runHttpAsync (config: ServerConfig) (endpoint: string option) (url: string) : Async<unit> =
+        runHttp config endpoint url |> Async.AwaitTask
