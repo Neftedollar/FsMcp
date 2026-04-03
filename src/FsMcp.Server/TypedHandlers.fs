@@ -54,16 +54,35 @@ module internal SchemaGen =
             let schemaNode = jsonOptions.GetJsonSchemaAsNode(typ)
             let optionFields = getOptionFields<'T> ()
 
-            if not (Set.isEmpty optionFields) then
-                match schemaNode with
-                | :? JsonObject as obj ->
-                    // Fix "type": remove null from top-level type array
-                    match obj.["type"] with
-                    | :? JsonArray as typeArr when typeArr.Count = 2 ->
-                        obj.["type"] <- JsonValue.Create("object")
-                    | _ -> ()
+            match schemaNode with
+            | :? JsonObject as obj ->
+                // Always fix top-level type: ["object", "null"] → "object"
+                match obj.["type"] with
+                | :? JsonArray as typeArr when typeArr.Count = 2 ->
+                    obj.["type"] <- JsonValue.Create("object")
+                | _ -> ()
 
-                    // Remove option fields from "required"
+                // Fix property types: strip null from required property types
+                match obj.["properties"] with
+                | :? JsonObject as props ->
+                    for prop in props do
+                        match prop.Value with
+                        | :? JsonObject as propObj ->
+                            match propObj.["type"] with
+                            | :? JsonArray as typeArr when typeArr.Count = 2 ->
+                                if not (optionFields.Contains(prop.Key)) then
+                                    let nonNull =
+                                        typeArr |> Seq.cast<JsonNode>
+                                        |> Seq.tryFind (fun n -> n.GetValue<string>() <> "null")
+                                    match nonNull with
+                                    | Some v -> propObj.["type"] <- JsonValue.Create(v.GetValue<string>())
+                                    | None -> ()
+                            | _ -> ()
+                        | _ -> ()
+                | _ -> ()
+
+                // Remove option fields from "required"
+                if not (Set.isEmpty optionFields) then
                     match obj.["required"] with
                     | :? JsonArray as required ->
                         let toRemove =
@@ -76,7 +95,7 @@ module internal SchemaGen =
                         if required.Count = 0 then
                             obj.Remove("required") |> ignore
                     | _ -> ()
-                | _ -> ()
+            | _ -> ()
 
             JsonSerializer.SerializeToElement(schemaNode, jsonOptions))
 

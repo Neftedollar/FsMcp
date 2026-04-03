@@ -19,31 +19,53 @@ module Server =
     //  Tool bridge
     // ────────────────────────────────────────────────
 
+    /// Custom AIFunction that bridges FsMcp's handler to the MCP SDK.
+    /// Avoids reflection-based parameter binding by providing schema + direct invocation.
+    type private ToolAIFunction(td: ToolDefinition) =
+        inherit Microsoft.Extensions.AI.AIFunction()
+
+        let schema =
+            match td.InputSchema with
+            | Some s -> s
+            | None -> JsonDocument.Parse("""{"type":"object","properties":{}}""").RootElement.Clone()
+
+        override _.Name = ToolName.value td.Name
+        override _.Description = td.Description
+        override _.JsonSchema = schema
+        override _.InvokeCoreAsync(arguments, _ct) =
+            ValueTask<obj>(task {
+                let map =
+                    if isNull arguments then Map.empty
+                    else
+                        arguments
+                        |> Seq.choose (fun kv ->
+                            match kv.Value with
+                            | :? JsonElement as je -> Some(kv.Key, je.Clone())
+                            | v when not (isNull v) ->
+                                let je = JsonSerializer.SerializeToElement(v)
+                                Some(kv.Key, je)
+                            | _ -> None)
+                        |> Map.ofSeq
+                try
+                    let! result = td.Handler map
+                    match result with
+                    | Ok contents ->
+                        return CallToolResult(
+                            Content = (contents |> List.map Interop.toSdkContentBlock |> List.toArray)) :> obj
+                    | Error err ->
+                        return CallToolResult(
+                            Content = [| TextContentBlock(Text = $"%A{err}") |],
+                            IsError = true) :> obj
+                with ex ->
+                    return CallToolResult(
+                        Content = [| TextContentBlock(Text = ex.Message) |],
+                        IsError = true) :> obj
+            })
+
     let private createSdkTool (td: ToolDefinition) : McpServerTool =
-        let handler =
-            Func<McpServer, Dictionary<string, JsonElement>, Threading.CancellationToken, Task<CallToolResult>>(
-                fun _server args _ct ->
-                    task {
-                        let map =
-                            if isNull args then Map.empty
-                            else args |> Seq.map (fun kv -> kv.Key, kv.Value.Clone()) |> Map.ofSeq
-                        try
-                            let! result = td.Handler map
-                            match result with
-                            | Ok contents ->
-                                return CallToolResult(
-                                    Content = (contents |> List.map Interop.toSdkContentBlock |> List.toArray))
-                            | Error err ->
-                                return CallToolResult(
-                                    Content = [| TextContentBlock(Text = $"%A{err}") |],
-                                    IsError = true)
-                        with ex ->
-                            return CallToolResult(
-                                Content = [| TextContentBlock(Text = ex.Message) |],
-                                IsError = true)
-                    })
+        let aiFunction = ToolAIFunction(td)
         McpServerTool.Create(
-            handler :> Delegate,
+            aiFunction,
             McpServerToolCreateOptions(
                 Name = ToolName.value td.Name,
                 Description = td.Description))
