@@ -20,6 +20,7 @@
     <Compile Include="Notifications.fs" />
     <Compile Include="ToolBuilder.fs" />
     <Compile Include="ValidationMiddleware.fs" />
+    <Compile Include="Telemetry.fs" />
     <Compile Include="Transport.fs" />
   </ItemGroup>
 

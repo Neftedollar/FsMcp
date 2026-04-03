@@ -21,6 +21,7 @@
     <Compile Include="ValidationMiddlewareTests.fs" />
     <Compile Include="ToolBuilderTests.fs" />
     <Compile Include="DynamicServerTests.fs" />
+    <Compile Include="TelemetryTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
