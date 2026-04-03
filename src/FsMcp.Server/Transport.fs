@@ -11,7 +11,6 @@ open FsMcp.Core
 open FsMcp.Core.Validation
 open ModelContextProtocol.Server
 open ModelContextProtocol.Protocol
-open Microsoft.AspNetCore.Builder
 
 /// Functions for running an MCP server from a ServerConfig.
 module Server =
@@ -128,7 +127,7 @@ module Server =
     //  Registration
     // ────────────────────────────────────────────────
 
-    let private registerAll (builder: IMcpServerBuilder) (config: ServerConfig) =
+    let internal registerAllInternal (builder: IMcpServerBuilder) (config: ServerConfig) =
         if not (List.isEmpty config.Tools) then
             builder.WithTools(config.Tools |> List.map createSdkTool) |> ignore
         if not (List.isEmpty config.Resources) then
@@ -151,7 +150,7 @@ module Server =
 
             let mcpBuilder = hostBuilder.Services.AddMcpServer()
             mcpBuilder.WithStdioServerTransport() |> ignore
-            registerAll mcpBuilder config
+            registerAllInternal mcpBuilder config
 
             do! hostBuilder.Build().RunAsync()
         }
@@ -160,28 +159,5 @@ module Server =
     let runAsync (config: ServerConfig) : Async<unit> =
         run config |> Async.AwaitTask
 
-    // ────────────────────────────────────────────────
-    //  Run (HTTP) — requires ASP.NET Core
-    // ────────────────────────────────────────────────
-
-    /// Run the MCP server over HTTP (Streamable HTTP + SSE).
-    /// Requires the ModelContextProtocol.AspNetCore package.
-    let runHttp (config: ServerConfig) (endpoint: string option) (url: string) : Task<unit> =
-        task {
-            let builder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder()
-            builder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
-
-            let mcpBuilder = builder.Services.AddMcpServer()
-            mcpBuilder.WithHttpTransport() |> ignore
-            registerAll mcpBuilder config
-
-            let app = builder.Build()
-            let route = endpoint |> Option.defaultValue "/"
-            app.MapMcp(route) |> ignore
-            app.Urls.Add(url)
-            do! app.RunAsync()
-        }
-
-    /// Run the MCP server over HTTP as an Async computation.
-    let runHttpAsync (config: ServerConfig) (endpoint: string option) (url: string) : Async<unit> =
-        runHttp config endpoint url |> Async.AwaitTask
+    // HTTP transport is in the separate FsMcp.Server.Http package.
+    // Install it only if you need HTTP/SSE — stdio doesn't require ASP.NET.

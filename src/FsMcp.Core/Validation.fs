@@ -6,6 +6,24 @@ type ValidationError =
     | InvalidFormat of fieldName: string * value: string * expected: string
     | DuplicateEntry of entryType: string * name: string
 
+module ValidationError =
+    /// Format a ValidationError as a human-readable string.
+    let format (e: ValidationError) : string =
+        match e with
+        | EmptyValue field -> $"{field} cannot be empty"
+        | InvalidFormat (field, value, expected) -> $"{field} '{value}' is invalid, expected {expected}"
+        | DuplicateEntry (kind, name) -> $"Duplicate {kind}: '{name}'"
+
+/// Helper to unwrap Result or throw with a descriptive message.
+/// Use instead of `Result.defaultWith failwith` which doesn't compile with ValidationError.
+[<AutoOpen>]
+module ResultExtensions =
+    /// Unwrap Ok or raise with formatted ValidationError.
+    let unwrapResult (result: Result<'T, ValidationError>) : 'T =
+        match result with
+        | Ok v -> v
+        | Error e -> failwith (ValidationError.format e)
+
 /// Validated identifier types with smart constructors.
 /// Each type is a single-case DU that guarantees validity at construction time.
 module Validation =

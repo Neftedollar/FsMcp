@@ -49,10 +49,18 @@ module Notifications =
             CancellationToken = CancellationToken.None
         }
 
-    /// Registry for contextual tool handlers, keyed by tool name.
-    /// Stores the pre-wrapped handler that accepts (HandlerContext, Map<string, JsonElement>).
-    let private contextHandlerRegistry =
-        System.Collections.Concurrent.ConcurrentDictionary<string, HandlerContext -> Map<string, JsonElement> -> Task<Result<Content list, McpError>>>()
+    /// Per-tool handler storage. Each ContextualTool.define call returns a
+    /// ToolDefinition whose Handler closes over its own context-aware handler,
+    /// avoiding a process-global registry that causes test isolation issues.
+
+    /// A contextual tool definition that captures its context-aware handler
+    /// in a closure (no global registry — test-safe).
+    type ContextualToolHandle = {
+        /// The ToolDefinition for registration with the server.
+        Definition: ToolDefinition
+        /// Invoke with a specific HandlerContext (for testing or runtime wiring).
+        InvokeWithContext: HandlerContext -> Map<string, JsonElement> -> Task<Result<Content list, McpError>>
+    }
 
     /// Contextual tool definitions that receive a HandlerContext for sending notifications.
     module ContextualTool =
@@ -60,16 +68,14 @@ module Notifications =
         let private deserializerOptions = JsonSerializerOptions(PropertyNameCaseInsensitive = true)
 
         /// Define a tool whose handler receives a HandlerContext for sending notifications.
-        /// When invoked through the standard Handler, a no-op context is used.
-        /// Use invokeWithContext to supply a real context at runtime.
+        /// Returns a ContextualToolHandle with both the ToolDefinition and a way to invoke with context.
         let define<'TArgs>
             (name: string)
             (description: string)
             (handler: HandlerContext -> 'TArgs -> Task<Result<Content list, McpError>>)
-            : Result<ToolDefinition, ValidationError> =
+            : Result<ContextualToolHandle, ValidationError> =
             let schema = SchemaGen.generateSchema<'TArgs>()
 
-            // Pre-wrap: deserialize args once, then call the typed handler with any context.
             let contextAwareHandler (ctx: HandlerContext) (args: Map<string, JsonElement>) = task {
                 try
                     let jsonObj = JsonObject()
@@ -82,26 +88,19 @@ module Notifications =
                     return Result.Error (HandlerException ex)
             }
 
-            // The standard handler uses a no-op context.
             let rawHandler (args: Map<string, JsonElement>) =
                 contextAwareHandler HandlerContext.noOp args
 
             match ToolName.create name with
             | Ok tn ->
-                contextHandlerRegistry.[ToolName.value tn] <- contextAwareHandler
-                Ok { Name = tn; Description = description; InputSchema = Some schema; Handler = rawHandler }
+                let td = { Name = tn; Description = description; InputSchema = Some schema; Handler = rawHandler }
+                Ok { Definition = td; InvokeWithContext = contextAwareHandler }
             | Result.Error e -> Result.Error e
 
         /// Invoke a contextual tool with a specific HandlerContext.
-        /// This allows wiring up real progress/log notification senders at runtime.
         let invokeWithContext
             (ctx: HandlerContext)
-            (tool: ToolDefinition)
+            (handle: ContextualToolHandle)
             (args: Map<string, JsonElement>)
             : Task<Result<Content list, McpError>> =
-            let toolName = ToolName.value tool.Name
-            match contextHandlerRegistry.TryGetValue(toolName) with
-            | true, contextHandler -> contextHandler ctx args
-            | false, _ ->
-                // Fallback to standard handler (no context available).
-                tool.Handler args
+            handle.InvokeWithContext ctx args

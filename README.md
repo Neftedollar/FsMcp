@@ -68,15 +68,15 @@ let server = mcpServer {
                 |> Option.defaultValue "World"
             return Ok [ Content.text $"Hello, {name}!" ]
         })
-        |> Result.defaultWith (fun e -> failwith $"%A{e}"))
+        |> unwrapResult)
 
     resource (
         Resource.define "config://settings" "App Settings" (fun _ -> task {
-            let uri = ResourceUri.create "config://settings" |> Result.defaultWith failwith
-            let mime = MimeType.create "application/json" |> Result.defaultWith failwith
+            let uri = ResourceUri.create "config://settings" |> unwrapResult
+            let mime = MimeType.create "application/json" |> unwrapResult
             return Ok (TextResource (uri, mime, """{"theme":"dark"}"""))
         })
-        |> Result.defaultWith (fun e -> failwith $"%A{e}"))
+        |> unwrapResult)
 
     useStdio
 }
@@ -86,8 +86,12 @@ Server.run server |> fun t -> t.GetAwaiter().GetResult()
 
 ### Run over HTTP instead
 
+Add `FsMcp.Server.Http` package (separate — no ASP.NET dependency for stdio-only servers):
+
 ```fsharp
-Server.runHttp server (Some "/mcp") "http://localhost:3001"
+open FsMcp.Server.Http
+
+HttpServer.run server (Some "/mcp") "http://localhost:3001"
 |> fun t -> t.GetAwaiter().GetResult()
 ```
 
@@ -108,7 +112,7 @@ let demo () = task {
     for t in tools do
         printfn "Tool: %s — %s" t.Name t.Description
 
-    let toolName = ToolName.create "greet" |> Result.defaultWith failwith
+    let toolName = ToolName.create "greet" |> unwrapResult
     let args = Map.ofList [
         "name", System.Text.Json.JsonDocument.Parse("\"FsMcp\"").RootElement
     ]

@@ -9,7 +9,6 @@
   <ItemGroup>
     <Compile Include="SamplingTypes.fs" />
     <Compile Include="SamplingHandler.fs" />
-    <Compile Include="SamplingMiddleware.fs" />
   </ItemGroup>
 
   <ItemGroup>

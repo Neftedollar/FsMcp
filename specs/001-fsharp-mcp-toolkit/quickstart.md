@@ -35,7 +35,7 @@ let main _ =
                     |> Option.defaultValue "World"
                 return Ok [ Content.text $"Hello, {name}!" ]
             })
-            |> Result.defaultWith (fun e -> failwith $"%A{e}"))
+            |> unwrapResult)
 
         useStdio
     }
@@ -77,7 +77,7 @@ let demo () = task {
     let! tools = McpClient.listTools client
     for t in tools do printfn "Tool: %s" t.Name
 
-    let toolName = ToolName.create "greet" |> Result.defaultWith failwith
+    let toolName = ToolName.create "greet" |> unwrapResult
     let args = Map.ofList [
         "name", System.Text.Json.JsonDocument.Parse("\"FsMcp\"").RootElement
     ]

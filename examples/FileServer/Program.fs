@@ -17,7 +17,7 @@ let server = mcpServer {
             return Ok [ Content.text content ]
         with ex ->
             return Error (TransportError $"Failed to read file: {ex.Message}")
-    }) |> Result.defaultWith failwith)
+    }) |> unwrapResult)
 
     tool (TypedTool.define<ListDirArgs> "list_directory" "List files in a directory" (fun args -> task {
         try
@@ -31,7 +31,7 @@ let server = mcpServer {
             return Ok [ Content.text result ]
         with ex ->
             return Error (TransportError $"Failed to list directory: {ex.Message}")
-    }) |> Result.defaultWith failwith)
+    }) |> unwrapResult)
 
     tool (TypedTool.define<FileInfoArgs> "file_info" "Get file metadata" (fun args -> task {
         try
@@ -49,7 +49,7 @@ let server = mcpServer {
                 return Ok [ Content.text result ]
         with ex ->
             return Error (TransportError $"Failed to get file info: {ex.Message}")
-    }) |> Result.defaultWith failwith)
+    }) |> unwrapResult)
 
     useStdio
 }

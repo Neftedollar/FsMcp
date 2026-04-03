@@ -11,20 +11,20 @@ let server = mcpServer {
 
     tool (TypedTool.define<EchoArgs> "echo" "Echoes the message back" (fun args -> task {
         return Ok [ Content.text $"Echo: {args.message}" ]
-    }) |> Result.defaultWith failwith)
+    }) |> unwrapResult)
 
     tool (TypedTool.define<ReverseArgs> "reverse" "Reverses the text" (fun args -> task {
         let reversed = args.text |> Seq.rev |> System.String.Concat
         let result = if args.uppercase |> Option.defaultValue false then reversed.ToUpper() else reversed
         return Ok [ Content.text result ]
-    }) |> Result.defaultWith failwith)
+    }) |> unwrapResult)
 
     resource (
         Resource.define "info://server/status" "Server Status" (fun _ -> task {
-            let uri = ResourceUri.create "info://server/status" |> Result.defaultWith failwith
-            let mime = MimeType.create "application/json" |> Result.defaultWith failwith
+            let uri = ResourceUri.create "info://server/status" |> unwrapResult
+            let mime = MimeType.create "application/json" |> unwrapResult
             return Ok (TextResource (uri, mime, """{"status":"running","uptime":"∞"}"""))
-        }) |> Result.defaultWith failwith)
+        }) |> unwrapResult)
 
     prompt (
         Prompt.define "explain" [] (fun args -> task {
@@ -33,7 +33,7 @@ let server = mcpServer {
                 { Role = User; Content = Content.text $"Please explain {topic} simply." }
                 { Role = Assistant; Content = Content.text $"I'll explain {topic} in simple terms." }
             ]
-        }) |> Result.defaultWith failwith)
+        }) |> unwrapResult)
 
     useStdio
 }

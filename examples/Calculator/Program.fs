@@ -9,22 +9,22 @@ let server = mcpServer {
 
     tool (TypedTool.define<CalcArgs> "add" "Add two numbers" (fun args -> task {
         return Ok [ Content.text $"{args.a + args.b}" ]
-    }) |> Result.defaultWith failwith)
+    }) |> unwrapResult)
 
     tool (TypedTool.define<CalcArgs> "subtract" "Subtract b from a" (fun args -> task {
         return Ok [ Content.text $"{args.a - args.b}" ]
-    }) |> Result.defaultWith failwith)
+    }) |> unwrapResult)
 
     tool (TypedTool.define<CalcArgs> "multiply" "Multiply two numbers" (fun args -> task {
         return Ok [ Content.text $"{args.a * args.b}" ]
-    }) |> Result.defaultWith failwith)
+    }) |> unwrapResult)
 
     tool (TypedTool.define<CalcArgs> "divide" "Divide a by b" (fun args -> task {
         if args.b = 0.0 then
             return Error (TransportError "Division by zero")
         else
             return Ok [ Content.text $"{args.a / args.b}" ]
-    }) |> Result.defaultWith failwith)
+    }) |> unwrapResult)
 
     useStdio
 }

@@ -41,7 +41,9 @@ module Telemetry =
         }
 
     /// Metrics collector that tracks request counts and durations.
-    type MetricsCollector() =
+    /// Keeps only the last 1000 durations per method to prevent memory leaks.
+    type MetricsCollector(?maxDurationsPerMethod: int) =
+        let maxDurations = defaultArg maxDurationsPerMethod 1000
         let requestCounts = System.Collections.Concurrent.ConcurrentDictionary<string, int ref>()
         let durations = System.Collections.Concurrent.ConcurrentDictionary<string, ResizeArray<int64>>()
 
@@ -66,7 +68,9 @@ module Telemetry =
                 let! response = next ctx
                 sw.Stop()
                 let durs = durations.GetOrAdd(ctx.Method, fun _ -> ResizeArray<int64>())
-                lock durs (fun () -> durs.Add(sw.ElapsedMilliseconds))
+                lock durs (fun () ->
+                    if durs.Count >= maxDurations then durs.RemoveAt(0)
+                    durs.Add(sw.ElapsedMilliseconds))
                 return response
             }
 

@@ -3,6 +3,7 @@
     <Project Path="src/FsMcp.Client/FsMcp.Client.fsproj" />
     <Project Path="src/FsMcp.Core/FsMcp.Core.fsproj" />
     <Project Path="src/FsMcp.Sampling/FsMcp.Sampling.fsproj" />
+    <Project Path="src/FsMcp.Server.Http/FsMcp.Server.Http.fsproj" />
     <Project Path="src/FsMcp.Server/FsMcp.Server.fsproj" />
     <Project Path="src/FsMcp.TaskApi/FsMcp.TaskApi.fsproj" />
     <Project Path="src/FsMcp.Testing/FsMcp.Testing.fsproj" />
