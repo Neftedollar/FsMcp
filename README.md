@@ -1,82 +1,73 @@
-# FsMcp — Idiomatic F# Toolkit for the Model Context Protocol
+# FsMcp
 
-FsMcp wraps Microsoft's official [ModelContextProtocol](https://github.com/modelcontextprotocol/csharp-sdk) .NET SDK with a functional, type-safe F# API.
+**Build MCP servers in F# with type safety, computation expressions, and zero boilerplate.**
 
-## Architecture
+[![CI](https://github.com/FsMcp/FsMcp/actions/workflows/ci.yml/badge.svg)](https://github.com/FsMcp/FsMcp/actions)
+[![NuGet](https://img.shields.io/nuget/v/FsMcp.Server.svg)](https://www.nuget.org/packages/FsMcp.Server)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Your F# Code                             │
-│                                                                 │
-│   mcpServer {                    McpClient.connect config       │
-│     name "MyServer"              McpClient.callTool client ...  │
-│     tool (Tool.define ...)       McpClient.listResources ...    │
-│     resource (Resource.define)                                  │
-│     prompt (Prompt.define)                                      │
-│     useStdio / useHttp                                          │
-│   }                                                             │
-├─────────────┬───────────────────────────────┬───────────────────┤
-│ FsMcp.Server│        FsMcp.Core             │   FsMcp.Client    │
-│             │                               │                   │
-│ ServerBuilder (CE)  Types & DUs             │ Typed client      │
-│ Handlers          Validation (smart ctors)  │ Transport helpers │
-│ Middleware        Serialization (JSON)       │ Async wrappers   │
-│ Transport         Interop (internal)        │                   │
-├─────────────┴───────────────────────────────┴───────────────────┤
-│              Microsoft ModelContextProtocol SDK                  │
-│         (transport, JSON-RPC, capability negotiation)           │
-├─────────────────────────────────────────────────────────────────┤
-│                   .NET 10 Runtime                               │
-└─────────────────────────────────────────────────────────────────┘
+```fsharp
+type GreetArgs = { name: string; greeting: string option }
+
+let server = mcpServer {
+    name "MyServer"
+    version "1.0.0"
+
+    tool (TypedTool.define<GreetArgs> "greet" "Greets a person" (fun args -> task {
+        let greeting = args.greeting |> Option.defaultValue "Hello"
+        return Ok [ Content.text $"{greeting}, {args.name}!" ]
+    }) |> unwrapResult)
+
+    useStdio
+}
+
+Server.run server |> fun t -> t.GetAwaiter().GetResult()
+// Input schema auto-generated: name=required, greeting=optional
 ```
 
-## Projects
+## Install
 
+```bash
+dotnet add package FsMcp.Server     # server builder + stdio transport
+dotnet add package FsMcp.Client     # typed client wrapper
+dotnet add package FsMcp.Testing    # test helpers + FsCheck generators
+dotnet add package FsMcp.TaskApi    # FsToolkit.ErrorHandling pipeline
+dotnet add package FsMcp.Server.Http  # HTTP/SSE transport (opt-in ASP.NET)
+dotnet add package FsMcp.Sampling   # LLM sampling from server tools
 ```
-FsMcp.sln
-├── src/
-│   ├── FsMcp.Core/          # Domain types, validation, serialization
-│   ├── FsMcp.Server/        # Server builder DSL, handlers, middleware, transport
-│   ├── FsMcp.Client/        # Client wrapper with typed results
-│   └── FsMcp.Testing/       # Test helpers: assertions, generators, test server
-└── tests/
-    ├── FsMcp.Core.Tests/    # 119 tests (Expecto + FsCheck property tests)
-    ├── FsMcp.Server.Tests/  # 39 tests (builder, handlers, middleware, interop)
-    ├── FsMcp.Client.Tests/  # 14 tests + 8 integration (pending)
-    └── FsMcp.Testing.Tests/ # 55 tests (expect helpers, generators, test server)
-```
+
+## Why FsMcp?
+
+- **`mcpServer { }` CE** — declare tools, resources, prompts in a single block
+- **`TypedTool.define<'T>`** — F# record as input, JSON Schema auto-generated via TypeShape
+- **`Result<'T, McpError>`** — no exceptions in expected paths, typed errors everywhere
+- **Smart constructors** — `ToolName.create` validates at construction, not at runtime
+- **Composable middleware** — logging, validation, telemetry via `Middleware.pipeline`
+- **306 tests** — Expecto + FsCheck property tests on every domain type
 
 ## Quick Start
 
-### Define and run an MCP server
+### Server with typed tools
 
 ```fsharp
 open FsMcp.Core
 open FsMcp.Core.Validation
 open FsMcp.Server
 
+type CalcArgs = { a: float; b: float }
+
 let server = mcpServer {
-    name "MyServer"
+    name "Calculator"
     version "1.0.0"
 
-    tool (
-        Tool.define "greet" "Greets a person by name" (fun args -> task {
-            let name =
-                args
-                |> Map.tryFind "name"
-                |> Option.map (fun j -> j.GetString())
-                |> Option.defaultValue "World"
-            return Ok [ Content.text $"Hello, {name}!" ]
-        })
-        |> unwrapResult)
+    tool (TypedTool.define<CalcArgs> "add" "Add two numbers" (fun args -> task {
+        return Ok [ Content.text $"{args.a + args.b}" ]
+    }) |> unwrapResult)
 
-    resource (
-        Resource.define "config://settings" "App Settings" (fun _ -> task {
-            let uri = ResourceUri.create "config://settings" |> unwrapResult
-            let mime = MimeType.create "application/json" |> unwrapResult
-            return Ok (TextResource (uri, mime, """{"theme":"dark"}"""))
-        })
-        |> unwrapResult)
+    tool (TypedTool.define<CalcArgs> "divide" "Divide a by b" (fun args -> task {
+        if args.b = 0.0 then return Error (TransportError "Division by zero")
+        else return Ok [ Content.text $"{args.a / args.b}" ]
+    }) |> unwrapResult)
 
     useStdio
 }
@@ -84,9 +75,11 @@ let server = mcpServer {
 Server.run server |> fun t -> t.GetAwaiter().GetResult()
 ```
 
-### Run over HTTP instead
+### HTTP transport
 
-Add `FsMcp.Server.Http` package (separate — no ASP.NET dependency for stdio-only servers):
+```bash
+dotnet add package FsMcp.Server.Http
+```
 
 ```fsharp
 open FsMcp.Server.Http
@@ -95,149 +88,115 @@ HttpServer.run server (Some "/mcp") "http://localhost:3001"
 |> fun t -> t.GetAwaiter().GetResult()
 ```
 
-### Connect as a client
+### Client
 
 ```fsharp
+open FsMcp.Core.Validation
 open FsMcp.Client
 
 let demo () = task {
     let config = {
-        Transport = ClientTransport.stdio "dotnet" ["run"; "--project"; "../MyServer"]
+        Transport = ClientTransport.stdio "dotnet" ["run"; "--project"; "../Calculator"]
         Name = "TestClient"
         ShutdownTimeout = None
     }
     let! client = McpClient.connect config
     let! tools = McpClient.listTools client
 
-    for t in tools do
-        printfn "Tool: %s — %s" t.Name t.Description
-
-    let toolName = ToolName.create "greet" |> unwrapResult
+    let toolName = ToolName.create "add" |> unwrapResult
     let args = Map.ofList [
-        "name", System.Text.Json.JsonDocument.Parse("\"FsMcp\"").RootElement
+        "a", System.Text.Json.JsonDocument.Parse("10").RootElement
+        "b", System.Text.Json.JsonDocument.Parse("20").RootElement
     ]
     let! result = McpClient.callTool client toolName args
-    match result with
-    | Ok contents -> for c in contents do printfn "%A" c
-    | Error err -> printfn "Error: %A" err
-
-    do! McpClient.disconnect client
+    // result : Result<Content list, McpError>
 }
 ```
 
-### Test your server
+### Testing
 
 ```fsharp
 open FsMcp.Testing
 
-// Direct handler testing (no transport needed)
-let result = TestServer.callTool serverConfig "greet" (Map.ofList ["name", jsonElement])
-              |> Async.AwaitTask |> Async.RunSynchronously
+// Direct handler invocation — no network, no process spawning
+let result =
+    TestServer.callTool serverConfig "add"
+        (Map.ofList ["a", jsonEl 10; "b", jsonEl 20])
+    |> Async.AwaitTask |> Async.RunSynchronously
 
-// Assertion helpers
-result |> Expect.mcpHasTextContent "Hello, FsMcp!" "greet response"
-
-// FsCheck generators for property testing
-McpArbitraries.register ()
-testPropertyWithConfig config "tool handles any valid input"
-    <| fun (name: ToolName) -> ...
+result |> Expect.mcpHasTextContent "30" "addition works"
 ```
 
-## Type System
+## Architecture
 
 ```
-Identifiers (single-case DUs, private constructors):
-  ToolName ──── ToolName.create : string -> Result<ToolName, ValidationError>
-  ResourceUri ─ ResourceUri.create : string -> Result<ResourceUri, ValidationError>
-  PromptName ── PromptName.create : string -> Result<PromptName, ValidationError>
-  MimeType ──── MimeType.create : string -> Result<MimeType, ValidationError>
-  ServerName    ServerVersion
-
-Content (DU):
-  Text of string
-  Image of byte[] * MimeType
-  EmbeddedResource of ResourceContents
-
-ResourceContents (DU):
-  TextResource of ResourceUri * MimeType * string
-  BlobResource of ResourceUri * MimeType * byte[]
-
-McpError (DU):
-  ValidationFailed | ToolNotFound | ResourceNotFound | PromptNotFound
-  HandlerException | TransportError | ProtocolError
-
-Server types:
-  ServerConfig ── built by mcpServer { } CE
-  McpMiddleware = McpContext -> (McpContext -> Task<McpResponse>) -> Task<McpResponse>
-  Transport = Stdio | Http of string option
+┌─────────────────────────────────────────────────────────────────┐
+│                        Your F# Code                             │
+│   mcpServer { tool ...; resource ...; prompt ... }              │
+├──────────────┬──────────────────────────────┬───────────────────┤
+│ FsMcp.Server │       FsMcp.Core             │   FsMcp.Client    │
+│              │                              │                   │
+│ CE builder     Types (DUs, records)         │ Typed wrapper     │
+│ TypedHandlers  Validation (smart ctors)     │ Async module      │
+│ Middleware     Serialization (JSON)          │                   │
+│ Streaming      Interop (internal)           │                   │
+│ Telemetry                                   │                   │
+├──────────────┴──────────────────────────────┴───────────────────┤
+│              Microsoft ModelContextProtocol SDK                  │
+├─────────────────────────────────────────────────────────────────┤
+│                      .NET 10 Runtime                            │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Middleware
+## Packages
 
-```fsharp
-let loggingMiddleware (logger: ILogger) : McpMiddleware =
-    fun ctx next -> task {
-        logger.LogInformation("Request: {Method}", ctx.Method)
-        let! response = next ctx
-        return response
-    }
+| Package | What it does |
+|---------|-------------|
+| **FsMcp.Core** | Domain types, smart constructors, JSON serialization |
+| **FsMcp.Server** | `mcpServer { }` CE, typed handlers, middleware, stdio transport |
+| **FsMcp.Server.Http** | HTTP/SSE transport via ASP.NET Core (opt-in) |
+| **FsMcp.Client** | Typed client with `Result<'T, McpError>` |
+| **FsMcp.Testing** | `TestServer.callTool`, `Expect.mcp*`, FsCheck generators |
+| **FsMcp.TaskApi** | `taskResult { }` pipeline via FsToolkit.ErrorHandling |
+| **FsMcp.Sampling** | Server-side LLM invocation via MCP sampling |
 
-let server = mcpServer {
-    name "WithMiddleware"
-    version "1.0.0"
-    middleware (loggingMiddleware logger)
-    tool (...)
-    useStdio
-}
-```
+## Features
 
-Compose middleware: `Middleware.compose mw1 mw2` or `Middleware.pipeline [mw1; mw2; mw3]`
-
-## Data Flow
-
-```
-                    ┌──────────┐
-  Client Request    │ mcpServer│    Server.run / Server.runHttp
-  ─────────────────►│   { }    │◄──────────────────────────────
-                    │ CE builds│
-                    │ Server   │
-                    │ Config   │
-                    └────┬─────┘
-                         │
-              ┌──────────▼──────────┐
-              │ ServerConfig.validate│ (rejects duplicates)
-              └──────────┬──────────┘
-                         │
-         ┌───────────────▼───────────────┐
-         │      SDK Registration         │
-         │                               │
-         │ McpServerTool.Create(handler) │
-         │ McpServerResource.Create(...)  │
-         │ McpServerPrompt.Create(...)    │
-         └───────────────┬───────────────┘
-                         │
-              ┌──────────▼──────────┐
-              │   Microsoft SDK     │
-              │ Host + Transport    │
-              │ (stdio / HTTP+SSE)  │
-              └─────────────────────┘
-```
+- **Typed tool handlers** — `TypedTool.define<'T>` with TypeShape-powered JSON Schema + caching
+- **Nested CE** — `mcpTool { toolName "..."; typedHandler ... }`
+- **Streaming tools** — `StreamingTool.define` with `IAsyncEnumerable<Content>`
+- **Notifications** — `ContextualTool.define` with progress + log callbacks
+- **Validation middleware** — auto-validates args against schema before handler
+- **Telemetry** — `Telemetry.tracing()` (Activity/OTel) + `MetricsCollector`
+- **Hot reload** — `DynamicServer.addTool` / `removeTool` at runtime
+- **Error handling** — `FsToolkit.ErrorHandling` integration via `FsMcp.TaskApi`
 
 ## Build & Test
 
 ```bash
-dotnet build       # builds all 4 projects
-dotnet test        # runs 227 tests (Expecto + FsCheck)
+dotnet build       # 7 packages
+dotnet test        # 306 tests (Expecto + FsCheck)
 ```
+
+## Examples
+
+See [`examples/`](examples/) for runnable MCP servers:
+- **EchoServer** — echo + reverse tools, resource, prompt
+- **Calculator** — add/subtract/multiply/divide
+- **FileServer** — read_file, list_directory, file_info
 
 ## Design Principles
 
-1. **Wrap, don't reimplement** — All protocol concerns delegated to Microsoft SDK
-2. **Idiomatic F#** — DUs, Result types, computation expressions, pipe-friendly
-3. **Type safety** — Private constructors, smart validators, no `obj` in public API
-4. **Test-first** — Expecto + FsCheck property tests on every function
-5. **Extensibility** — Composable middleware, function-based handlers
+1. **Wrap, don't reimplement** — protocol concerns stay in Microsoft SDK
+2. **Idiomatic F#** — DUs, Result, CEs, pipe-friendly
+3. **Type safety** — private constructors, no `obj` in public API
+4. **Test-first** — Expecto + FsCheck on every function
+5. **Composable** — middleware, function handlers, no inheritance
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and PRs welcome.
 
 ## License
 
-MIT
+[MIT](LICENSE)
