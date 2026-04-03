@@ -13,6 +13,7 @@
     <Compile Include="Handlers.fs" />
     <Compile Include="Server.fs" />
     <Compile Include="Middleware.fs" />
+    <Compile Include="TypedHandlers.fs" />
     <Compile Include="Transport.fs" />
   </ItemGroup>
 
@@ -24,6 +25,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
     <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
+    <PackageReference Include="TypeShape" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.5" />
   </ItemGroup>
 
