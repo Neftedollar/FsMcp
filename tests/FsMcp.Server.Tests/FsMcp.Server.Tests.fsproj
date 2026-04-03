@@ -16,6 +16,7 @@
     <Compile Include="HandlerExampleTests.fs" />
     <Compile Include="TransportTests.fs" />
     <Compile Include="TypedHandlerTests.fs" />
+    <Compile Include="ValidationMiddlewareTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
