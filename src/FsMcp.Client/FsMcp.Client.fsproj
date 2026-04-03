@@ -4,6 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Description>Typed F# client for connecting to MCP servers with Result-based error handling</Description>
+    <PackageTags>fsharp;mcp;model-context-protocol;ai;llm;dotnet;client</PackageTags>
+    <PackageProjectUrl>https://neftedollar.github.io/FsMcp/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Neftedollar/FsMcp</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>

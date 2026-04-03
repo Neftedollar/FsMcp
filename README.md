@@ -1,10 +1,11 @@
 # FsMcp
 
-**Build MCP servers in F# with type safety, computation expressions, and zero boilerplate.**
+**FsMcp is an idiomatic F# toolkit for building [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers and clients.** It wraps the official [Microsoft ModelContextProtocol .NET SDK](https://github.com/modelcontextprotocol/csharp-sdk) with computation expressions, typed tool handlers, Result-based error handling, and composable middleware — so you can build MCP servers in F# with type safety and zero boilerplate.
 
-[![CI](https://github.com/FsMcp/FsMcp/actions/workflows/ci.yml/badge.svg)](https://github.com/FsMcp/FsMcp/actions)
+[![CI](https://github.com/Neftedollar/FsMcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Neftedollar/FsMcp/actions)
 [![NuGet](https://img.shields.io/nuget/v/FsMcp.Server.svg)](https://www.nuget.org/packages/FsMcp.Server)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-neftedollar.github.io%2FFsMcp-blue)](https://neftedollar.github.io/FsMcp/)
 
 ```fsharp
 type GreetArgs = { name: string; greeting: string option }
