@@ -1,3 +1,10 @@
+---
+title: Server Guide
+category: Guides
+categoryindex: 1
+index: 0
+---
+
 # Server Guide
 
 ## The `mcpServer { }` computation expression

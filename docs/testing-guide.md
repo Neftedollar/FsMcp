@@ -1,3 +1,10 @@
+---
+title: Testing Guide
+category: Guides
+categoryindex: 1
+index: 0
+---
+
 # Testing Guide
 
 FsMcp ships a dedicated testing package that lets you test handlers directly against a `ServerConfig` without spinning up any transport.

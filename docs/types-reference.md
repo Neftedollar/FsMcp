@@ -1,3 +1,10 @@
+---
+title: Types Reference
+category: Guides
+categoryindex: 1
+index: 0
+---
+
 # Types Reference
 
 All public domain types in FsMcp with their definitions, constructors, and usage patterns.

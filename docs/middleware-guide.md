@@ -1,3 +1,10 @@
+---
+title: Middleware Guide
+category: Guides
+categoryindex: 1
+index: 0
+---
+
 # Middleware Guide
 
 ## What is `McpMiddleware`?

@@ -1,3 +1,10 @@
+---
+title: Advanced
+category: Guides
+categoryindex: 1
+index: 0
+---
+
 # Advanced
 
 ## `StreamingTool.define` -- `IAsyncEnumerable<Content>` handlers

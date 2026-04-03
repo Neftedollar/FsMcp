@@ -1,3 +1,10 @@
+---
+title: Getting Started with FsMcp
+category: Guides
+categoryindex: 1
+index: 0
+---
+
 # Getting Started with FsMcp
 
 ## Prerequisites

@@ -1,3 +1,10 @@
+---
+title: Client Guide
+category: Guides
+categoryindex: 1
+index: 0
+---
+
 # Client Guide
 
 ## ClientTransport
