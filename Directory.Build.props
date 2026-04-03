@@ -2,8 +2,8 @@
   <PropertyGroup>
     <Authors>FsMcp Contributors</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/FsMcp/FsMcp</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/FsMcp/FsMcp</RepositoryUrl>
+    <PackageProjectUrl>https://neftedollar.github.io/FsMcp/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Neftedollar/FsMcp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>fsharp;mcp;model-context-protocol;ai;llm;tools</PackageTags>
     <Copyright>Copyright (c) FsMcp Contributors</Copyright>
