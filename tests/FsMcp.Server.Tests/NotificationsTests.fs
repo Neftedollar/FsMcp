@@ -105,7 +105,7 @@ let notificationsTests =
                 let progressCalls = ResizeArray<ProgressUpdate>()
                 let logCalls = ResizeArray<LogEntry>()
                 let td =
-                    ContextualTool.define<ProcessArgs> "process" "Processes"
+                    ContextualTool.define<ProcessArgs> "process-ctx" "Processes"
                         (fun ctx args -> task {
                             do! ctx.ReportProgress { Progress = 0.5; Message = Some "half" }
                             do! ctx.Log { Level = McpLogLevel.Info; Message = "working"; Logger = Some "test" }

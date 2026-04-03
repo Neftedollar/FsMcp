@@ -60,7 +60,7 @@ let dynamicServerTests =
             let tool = mkTool "dup"
             let config = mkConfig [ tool ]
             let dyn = DynamicServer.create config
-            Expect.throwsT<System.Exception>
+            Expect.throws
                 (fun () -> DynamicServer.addTool (mkTool "dup") dyn)
                 "duplicate tool name should fail"
 

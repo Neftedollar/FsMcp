@@ -84,6 +84,11 @@ module ServerBuilderState =
         Transport = Stdio
     }
 
+/// Exception raised when server configuration is invalid.
+/// Provides a clear message about what went wrong and how to fix it.
+type FsMcpConfigException(message: string) =
+    inherit System.Exception(message)
+
 /// Computation expression builder for MCP servers.
 type McpServerBuilder() =
     member _.Yield(_) = ServerBuilderState.empty
@@ -93,14 +98,14 @@ type McpServerBuilder() =
     member _.Name(state: ServerBuilderState, n: string) =
         match ServerName.create n with
         | Ok sn -> { state with Name = Some sn }
-        | Error e -> failwith $"Invalid server name: %A{e}"
+        | Error e -> raise (FsMcpConfigException $"Invalid server name: %A{e}. Server name must be non-empty.")
 
     /// Set server version.
     [<CustomOperation("version")>]
     member _.Version(state: ServerBuilderState, v: string) =
         match ServerVersion.create v with
         | Ok sv -> { state with Version = Some sv }
-        | Error e -> failwith $"Invalid server version: %A{e}"
+        | Error e -> raise (FsMcpConfigException $"Invalid server version: %A{e}. Server version must be non-empty.")
 
     /// Add a tool definition.
     [<CustomOperation("tool")>]
@@ -135,10 +140,12 @@ type McpServerBuilder() =
     member _.Run(state: ServerBuilderState) : ServerConfig =
         let name =
             state.Name
-            |> Option.defaultWith (fun () -> failwith "Server name is required")
+            |> Option.defaultWith (fun () ->
+                raise (FsMcpConfigException "Server name is required. Add 'name \"MyServer\"' to your mcpServer { } block."))
         let version =
             state.Version
-            |> Option.defaultWith (fun () -> failwith "Server version is required")
+            |> Option.defaultWith (fun () ->
+                raise (FsMcpConfigException "Server version is required. Add 'version \"1.0.0\"' to your mcpServer { } block."))
         let config : ServerConfig = {
             Name = name
             Version = version
@@ -150,7 +157,12 @@ type McpServerBuilder() =
         }
         match ServerConfig.validate config with
         | Ok c -> c
-        | Error e -> failwith $"Server configuration validation failed: %A{e}"
+        | Error e ->
+            let hint =
+                match e with
+                | DuplicateEntry (kind, name) -> $"Remove the duplicate {kind} '{name}' from your server definition."
+                | _ -> "Check your server configuration for errors."
+            raise (FsMcpConfigException $"Server configuration invalid: %A{e}. {hint}")
 
 /// CE instance for building MCP servers.
 [<AutoOpen>]

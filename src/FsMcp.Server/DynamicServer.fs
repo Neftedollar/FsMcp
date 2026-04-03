@@ -25,7 +25,8 @@ module DynamicServer =
             |> List.groupBy id
             |> List.tryFind (fun (_, group) -> List.length group > 1)
         match duplicate with
-        | Some (name, _) -> failwith $"Duplicate tool name: {name}"
+        | Some (name, _) ->
+            raise (FsMcpConfigException $"Cannot add tool: a tool named '{name}' already exists. Remove it first with DynamicServer.removeTool.")
         | None ->
             server.Config <- { server.Config with Tools = newTools }
             server.OnToolsChanged.Trigger()

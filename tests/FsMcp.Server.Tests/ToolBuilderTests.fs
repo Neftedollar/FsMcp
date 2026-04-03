@@ -84,7 +84,7 @@ let toolBuilderTests =
             | other -> failtest $"unexpected: %A{other}"
 
         testCase "mcpTool fails if name missing" <| fun _ ->
-            Expect.throwsT<System.Exception>
+            Expect.throws
                 (fun () ->
                     let _td : ToolDefinition = mcpTool {
                         description "No name"
@@ -94,7 +94,7 @@ let toolBuilderTests =
                 "missing name should fail"
 
         testCase "mcpTool fails if handler missing" <| fun _ ->
-            Expect.throwsT<System.Exception>
+            Expect.throws
                 (fun () ->
                     let _td : ToolDefinition = mcpTool {
                         toolName "orphan"

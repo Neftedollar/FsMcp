@@ -64,10 +64,19 @@ type ToolCEBuilder() =
         { state with Handler = Some info.RawHandler; InputSchema = Some info.Schema }
 
     member _.Run(state: ToolBuilderState) : ToolDefinition =
-        let name = state.Name |> Option.defaultWith (fun () -> failwith "Tool name is required")
+        let name =
+            state.Name
+            |> Option.defaultWith (fun () ->
+                raise (FsMcpConfigException "Tool name is required. Add 'toolName \"myTool\"' to your mcpTool { } block."))
         let desc = state.Description |> Option.defaultValue ""
-        let handler = state.Handler |> Option.defaultWith (fun () -> failwith "Tool handler is required")
-        let tn = ToolName.create name |> Result.defaultWith (fun e -> failwith $"%A{e}")
+        let handler =
+            state.Handler
+            |> Option.defaultWith (fun () ->
+                raise (FsMcpConfigException "Tool handler is required. Add 'handler (fun args -> ...)' or 'typedHandler (TypedHandler.create<Args> ...)' to your mcpTool { } block."))
+        let tn =
+            ToolName.create name
+            |> Result.defaultWith (fun e ->
+                raise (FsMcpConfigException $"Invalid tool name '{name}': %A{e}. Tool name must be non-empty."))
         { Name = tn; Description = desc; InputSchema = state.InputSchema; Handler = handler }
 
 /// AutoOpen module to expose the mcpTool CE instance.

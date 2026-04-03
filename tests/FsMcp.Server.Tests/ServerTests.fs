@@ -67,7 +67,7 @@ let serverBuilderTests =
             Expect.equal (List.length config.Tools) 3 "three tools"
 
         testCase "rejects duplicate tool names" <| fun _ ->
-            Expect.throwsT<System.Exception>
+            Expect.throws
                 (fun () ->
                     mcpServer {
                         name "DupTool"
@@ -79,7 +79,7 @@ let serverBuilderTests =
                 "duplicate tool names should fail"
 
         testCase "rejects duplicate resource URIs" <| fun _ ->
-            Expect.throwsT<System.Exception>
+            Expect.throws
                 (fun () ->
                     mcpServer {
                         name "DupResource"
@@ -91,7 +91,7 @@ let serverBuilderTests =
                 "duplicate resource URIs should fail"
 
         testCase "rejects duplicate prompt names" <| fun _ ->
-            Expect.throwsT<System.Exception>
+            Expect.throws
                 (fun () ->
                     mcpServer {
                         name "DupPrompt"
