@@ -13,10 +13,12 @@
   <ItemGroup>
     <Compile Include="Handlers.fs" />
     <Compile Include="Server.fs" />
+    <Compile Include="DynamicServer.fs" />
     <Compile Include="Middleware.fs" />
     <Compile Include="TypedHandlers.fs" />
     <Compile Include="Streaming.fs" />
     <Compile Include="Notifications.fs" />
+    <Compile Include="ToolBuilder.fs" />
     <Compile Include="ValidationMiddleware.fs" />
     <Compile Include="Transport.fs" />
   </ItemGroup>

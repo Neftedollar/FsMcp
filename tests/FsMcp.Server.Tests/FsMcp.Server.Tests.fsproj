@@ -19,6 +19,8 @@
     <Compile Include="StreamingTests.fs" />
     <Compile Include="NotificationsTests.fs" />
     <Compile Include="ValidationMiddlewareTests.fs" />
+    <Compile Include="ToolBuilderTests.fs" />
+    <Compile Include="DynamicServerTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
