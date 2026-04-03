@@ -41,6 +41,8 @@ jobs:
       # OIDC token is exchanged for a short-lived NuGet API key
       - name: NuGet login (Trusted Publishing)
         uses: NuGet/login@v1
+        with:
+          user: Neftedollar
 
       - name: Push to NuGet
         run: dotnet nuget push ./nupkgs/*.nupkg --source https://api.nuget.org/v3/index.json --skip-duplicate
