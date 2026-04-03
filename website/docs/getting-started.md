@@ -1,5 +1,6 @@
 ---
 sidebar_position: 2
+description: "Install FsMcp and build your first MCP server in F# in 15 lines — including Claude Desktop integration."
 ---
 
 

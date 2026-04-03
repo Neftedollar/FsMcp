@@ -1,5 +1,6 @@
 ---
 sidebar_position: 3
+description: "Define MCP tools, resources, and prompts using the mcpServer computation expression, TypedTool.define, and typed handlers in F#."
 ---
 
 

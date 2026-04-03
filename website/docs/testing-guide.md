@@ -1,5 +1,6 @@
 ---
 sidebar_position: 6
+description: "Test MCP handlers without transport using TestServer, MCP-specific Expecto assertions, and FsCheck property generators."
 ---
 
 

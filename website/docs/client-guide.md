@@ -1,5 +1,6 @@
 ---
 sidebar_position: 5
+description: "Connect to MCP servers from F# using McpClient, McpClientAsync, and the pipe-friendly ClientPipeline with Result-based error handling."
 ---
 
 

@@ -50,6 +50,66 @@ const config: Config = {
     ],
   ],
 
+  headTags: [
+    // SEO: canonical description
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'description',
+        content: 'FsMcp is an F# toolkit for building Model Context Protocol (MCP) servers and clients with type safety, computation expressions, and zero boilerplate. Wraps the official Microsoft .NET MCP SDK.',
+      },
+    },
+    // SEO: keywords
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'keywords',
+        content: 'FsMcp, F#, MCP, Model Context Protocol, .NET, computation expressions, typed tools, MCP server, MCP client, FSharp',
+      },
+    },
+    // Open Graph
+    {
+      tagName: 'meta',
+      attributes: { property: 'og:type', content: 'website' },
+    },
+    {
+      tagName: 'meta',
+      attributes: { property: 'og:title', content: 'FsMcp — F# toolkit for Model Context Protocol' },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        property: 'og:description',
+        content: 'Build MCP servers and clients in F# with type safety, computation expressions, and zero boilerplate.',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: { property: 'og:url', content: 'https://neftedollar.github.io/FsMcp/' },
+    },
+    // Twitter Card
+    {
+      tagName: 'meta',
+      attributes: { name: 'twitter:card', content: 'summary' },
+    },
+    // Structured Data: SoftwareSourceCode (JSON-LD)
+    {
+      tagName: 'script',
+      attributes: { type: 'application/ld+json' },
+      innerHTML: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareSourceCode',
+        name: 'FsMcp',
+        description: 'F# toolkit for building Model Context Protocol (MCP) servers and clients with type safety, computation expressions, and zero boilerplate.',
+        codeRepository: 'https://github.com/Neftedollar/FsMcp',
+        programmingLanguage: 'F#',
+        runtimePlatform: '.NET 10',
+        license: 'https://opensource.org/licenses/MIT',
+        operatingSystem: 'Cross-platform',
+      }),
+    },
+  ],
+
   themeConfig: {
     navbar: {
       title: 'FsMcp',

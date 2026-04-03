@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
 slug: /
+description: "FsMcp is an F# toolkit for building Model Context Protocol (MCP) servers and clients with type safety, computation expressions, and zero boilerplate."
 ---
 
 # FsMcp

@@ -1,0 +1,72 @@
+# FsMcp
+
+> F# toolkit for building Model Context Protocol (MCP) servers and clients with type safety, computation expressions, and zero boilerplate.
+
+FsMcp wraps Microsoft's official ModelContextProtocol .NET SDK with an idiomatic F# API. It provides the `mcpServer { }` computation expression for declarative server definition, `TypedTool.define<'T>` for auto-generating JSON Schema from F# records, Result-based error handling, composable middleware, and a dedicated testing package with FsCheck property generators.
+
+## Packages
+
+- FsMcp.Server: Server builder CE, typed handlers, middleware, stdio transport
+- FsMcp.Client: Typed client with Result-based errors
+- FsMcp.Testing: TestServer, assertions, FsCheck generators
+- FsMcp.TaskApi: FsToolkit.ErrorHandling pipeline
+- FsMcp.Server.Http: HTTP/SSE transport (opt-in ASP.NET)
+- FsMcp.Sampling: LLM sampling from server tools
+
+## Links
+
+- Documentation: https://neftedollar.github.io/FsMcp/docs
+- Getting Started: https://neftedollar.github.io/FsMcp/docs/getting-started
+- Server Guide: https://neftedollar.github.io/FsMcp/docs/server-guide
+- Client Guide: https://neftedollar.github.io/FsMcp/docs/client-guide
+- Middleware Guide: https://neftedollar.github.io/FsMcp/docs/middleware-guide
+- Testing Guide: https://neftedollar.github.io/FsMcp/docs/testing-guide
+- Advanced: https://neftedollar.github.io/FsMcp/docs/advanced
+- Types Reference: https://neftedollar.github.io/FsMcp/docs/types-reference
+- Full documentation for LLMs: https://neftedollar.github.io/FsMcp/llms-full.txt
+- GitHub: https://github.com/Neftedollar/FsMcp
+- NuGet: https://www.nuget.org/packages?q=FsMcp
+
+## Quick Start
+
+```
+dotnet new console -lang F# -n MyMcpServer
+cd MyMcpServer
+dotnet add package FsMcp.Server
+```
+
+```fsharp
+open FsMcp.Core
+open FsMcp.Server
+
+type GreetArgs = { name: string }
+
+let server = mcpServer {
+    name "HelloServer"
+    version "1.0.0"
+    tool (TypedTool.define<GreetArgs> "greet" "Say hello" (fun args -> task {
+        return Ok [ Content.text $"Hello, {args.name}!" ]
+    }) |> unwrapResult)
+    useStdio
+}
+
+[<EntryPoint>]
+let main _ =
+    Server.run server |> fun t -> t.GetAwaiter().GetResult()
+    0
+```
+
+## Key Concepts
+
+- `mcpServer { }`: Computation expression that collects tools, resources, prompts, middleware, and transport into a validated ServerConfig
+- `TypedTool.define<'T>`: Define a tool with an F# record as input; JSON Schema is auto-generated via TypeShape. Option fields become optional in the schema.
+- `Tool.define`: Untyped tool with Map<string, JsonElement> arguments
+- `Resource.define` / `TypedResource.define<'T>`: Expose data that clients can read
+- `Prompt.define` / `TypedPrompt.define<'T>`: Define reusable conversation templates
+- Smart constructors: ToolName.create, ResourceUri.create, PromptName.create, MimeType.create — all return Result<'T, ValidationError>
+- Middleware: McpContext -> (McpContext -> Task<McpResponse>) -> Task<McpResponse>
+- TestServer: Test handlers directly against ServerConfig without transport
+- StreamingTool.define: IAsyncEnumerable<Content> handlers
+- ContextualTool.define: Handlers with progress/log notifications
+- DynamicServer: Add/remove tools at runtime
+- SamplingTool.define: Invoke client LLM from server tools

@@ -1,5 +1,6 @@
 ---
 sidebar_position: 8
+description: "Complete reference for all FsMcp domain types: Content, McpError, ValidationError, smart constructors, ServerConfig, middleware types, and namespace index."
 ---
 
 

@@ -1,5 +1,6 @@
 ---
 sidebar_position: 4
+description: "Compose logging, auth, validation, and telemetry middleware for FsMcp servers using the McpMiddleware pipeline."
 ---
 
 

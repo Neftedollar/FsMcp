@@ -1,5 +1,6 @@
 ---
 sidebar_position: 7
+description: "Advanced FsMcp features: streaming tools, contextual tools with progress notifications, dynamic servers, and LLM sampling from server tools."
 ---
 
 

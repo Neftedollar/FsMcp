@@ -1,0 +1,651 @@
+# FsMcp — Full Documentation
+
+> F# toolkit for building Model Context Protocol (MCP) servers and clients with type safety, computation expressions, and zero boilerplate.
+
+FsMcp wraps Microsoft's official ModelContextProtocol .NET SDK with an idiomatic F# API.
+
+- GitHub: https://github.com/Neftedollar/FsMcp
+- NuGet: https://www.nuget.org/packages?q=FsMcp
+- License: MIT
+- Runtime: .NET 10
+
+---
+
+## Packages
+
+| Package | Install | Description |
+|---------|---------|-------------|
+| FsMcp.Server | `dotnet add package FsMcp.Server` | Server builder CE, typed handlers, middleware, stdio |
+| FsMcp.Client | `dotnet add package FsMcp.Client` | Typed client with Result-based errors |
+| FsMcp.Testing | `dotnet add package FsMcp.Testing` | TestServer, assertions, FsCheck generators |
+| FsMcp.TaskApi | `dotnet add package FsMcp.TaskApi` | FsToolkit.ErrorHandling pipeline |
+| FsMcp.Server.Http | `dotnet add package FsMcp.Server.Http` | HTTP/SSE transport (opt-in ASP.NET) |
+| FsMcp.Sampling | `dotnet add package FsMcp.Sampling` | LLM sampling from server tools |
+
+## Why FsMcp?
+
+- `mcpServer { }` CE — declare tools, resources, prompts in one block
+- `TypedTool.define<'T>` — F# record as input, JSON Schema auto-generated via TypeShape
+- `Result<'T, McpError>` — typed errors, no exceptions in expected paths
+- Smart constructors — `ToolName.create` validates at construction, not at runtime
+- Composable middleware — logging, validation, telemetry via pipeline
+- 306 tests — Expecto + FsCheck property tests on every domain type
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- .NET 10 SDK (10.0.100 or later)
+- An editor with F# support (VS Code + Ionide, Rider, or Visual Studio)
+
+### Install packages
+
+```bash
+dotnet new console -lang F# -n MyMcpServer
+cd MyMcpServer
+dotnet add package FsMcp.Server
+```
+
+Other packages:
+
+```bash
+dotnet add package FsMcp.Client       # typed client wrapper
+dotnet add package FsMcp.Testing      # test helpers + FsCheck generators
+dotnet add package FsMcp.TaskApi      # FsToolkit.ErrorHandling pipeline
+dotnet add package FsMcp.Server.Http  # HTTP/SSE transport (opt-in ASP.NET)
+dotnet add package FsMcp.Sampling     # LLM sampling from server tools
+```
+
+### Hello world: minimal MCP server
+
+Replace `Program.fs` with:
+
+```fsharp
+open FsMcp.Core
+open FsMcp.Server
+
+type GreetArgs = { name: string }
+
+let server = mcpServer {
+    name "HelloServer"
+    version "1.0.0"
+
+    tool (TypedTool.define<GreetArgs> "greet" "Say hello" (fun args -> task {
+        return Ok [ Content.text $"Hello, {args.name}!" ]
+    }) |> unwrapResult)
+
+    useStdio
+}
+
+[<EntryPoint>]
+let main _ =
+    Server.run server |> fun t -> t.GetAwaiter().GetResult()
+    0
+```
+
+That is a complete, working MCP server in 15 lines. `TypedTool.define<GreetArgs>` auto-generates the JSON Schema from the `GreetArgs` record (the `name` field becomes a required `string` property). `unwrapResult` extracts the `Ok` value or throws with a descriptive error if the tool name is invalid.
+
+### Test with Claude Desktop
+
+Add this to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+
+```json
+{
+  "mcpServers": {
+    "hello": {
+      "command": "dotnet",
+      "args": ["run", "--project", "/absolute/path/to/MyMcpServer"]
+    }
+  }
+}
+```
+
+---
+
+## Server Guide
+
+### The `mcpServer { }` computation expression
+
+Every FsMcp server starts with the `mcpServer` CE. It collects your configuration and produces a validated `ServerConfig`:
+
+```fsharp
+open FsMcp.Core
+open FsMcp.Server
+
+let server = mcpServer {
+    name "MyServer"           // required -- ServerName (non-empty)
+    version "1.0.0"           // required -- ServerVersion (non-empty)
+    tool myToolDefinition     // zero or more tools
+    resource myResource       // zero or more resources
+    prompt myPrompt           // zero or more prompts
+    middleware myMiddleware    // zero or more middleware
+    useStdio                  // transport (default is stdio)
+}
+```
+
+Missing `name` or `version` raises `FsMcpConfigException`. Duplicate tool names, resource URIs, or prompt names also raise `FsMcpConfigException`.
+
+### Untyped tools with `Tool.define`
+
+For simple tools where you parse arguments manually from `Map<string, JsonElement>`:
+
+```fsharp
+let echoTool =
+    Tool.define "echo" "Echoes the message back" (fun args ->
+        let msg =
+            args
+            |> Map.tryFind "message"
+            |> Option.map (fun j -> j.GetString())
+            |> Option.defaultValue "(no message)"
+        task { return Ok [ Content.text $"Echo: {msg}" ] })
+    |> unwrapResult
+```
+
+The handler signature is: `Map<string, JsonElement> -> Task<Result<Content list, McpError>>`
+
+### Typed tools with `TypedTool.define<'T>`
+
+Define an F# record for your input. TypeShape inspects it at startup and generates a JSON Schema automatically. Option fields become optional in the schema:
+
+```fsharp
+type ReverseArgs = { text: string; uppercase: bool option }
+
+let reverseTool =
+    TypedTool.define<ReverseArgs> "reverse" "Reverses the text" (fun args -> task {
+        let reversed = args.text |> Seq.rev |> System.String.Concat
+        let result =
+            if args.uppercase |> Option.defaultValue false
+            then reversed.ToUpper()
+            else reversed
+        return Ok [ Content.text result ]
+    }) |> unwrapResult
+```
+
+### The `mcpTool { }` nested CE
+
+```fsharp
+let myTool = mcpTool {
+    toolName "calculate"
+    description "Performs a calculation"
+    handler (fun args -> task {
+        let a = args |> Map.tryFind "a" |> Option.map (fun j -> j.GetDouble()) |> Option.defaultValue 0.0
+        let b = args |> Map.tryFind "b" |> Option.map (fun j -> j.GetDouble()) |> Option.defaultValue 0.0
+        return Ok [ Content.text $"{a + b}" ]
+    })
+}
+```
+
+For typed handlers with the `mcpTool` CE, use `TypedHandler.create<'T>`:
+
+```fsharp
+type CalcArgs = { a: float; b: float }
+
+let typedCalcTool = mcpTool {
+    toolName "add"
+    description "Add two numbers"
+    typedHandler (TypedHandler.create<CalcArgs> (fun args -> task {
+        return Ok [ Content.text $"{args.a + args.b}" ]
+    }))
+}
+```
+
+### Resources with `Resource.define`
+
+```fsharp
+let statusResource =
+    Resource.define "info://server/status" "Server Status" (fun _ -> task {
+        let uri = ResourceUri.create "info://server/status" |> unwrapResult
+        let mime = MimeType.create "application/json" |> unwrapResult
+        return Ok (TextResource (uri, mime, """{"status":"running"}"""))
+    }) |> unwrapResult
+```
+
+Resource URIs must be absolute with a scheme (e.g., `https://`, `file:///`, `info://`).
+
+### Typed resources with `TypedResource.define<'T>`
+
+```fsharp
+type FileArgs = { path: string }
+
+let fileResource =
+    TypedResource.define<FileArgs> "file:///docs" "Documentation files" (fun args -> task {
+        let uri = ResourceUri.create $"file:///{args.path}" |> unwrapResult
+        let mime = MimeType.create "text/plain" |> unwrapResult
+        let! content = System.IO.File.ReadAllTextAsync(args.path)
+        return Ok (TextResource (uri, mime, content))
+    }) |> unwrapResult
+```
+
+### Prompts with `Prompt.define`
+
+```fsharp
+let summarizePrompt =
+    Prompt.define "summarize"
+        [ { Name = "topic"; Description = Some "The topic to summarize"; Required = true } ]
+        (fun args -> task {
+            let topic = args |> Map.tryFind "topic" |> Option.defaultValue "unknown"
+            return Ok [
+                { Role = User; Content = Content.text $"Please summarize {topic}." }
+                { Role = Assistant; Content = Content.text $"Here is a summary of {topic}." }
+            ]
+        })
+    |> unwrapResult
+```
+
+### Typed prompts with `TypedPrompt.define<'T>`
+
+```fsharp
+type SummarizeArgs = { topic: string; style: string option }
+
+let typedSummarize =
+    TypedPrompt.define<SummarizeArgs> "summarize" "Summarize a topic" (fun args -> task {
+        let style = args.style |> Option.defaultValue "concise"
+        return Ok [
+            { Role = User; Content = Content.text $"Summarize {args.topic} in a {style} style." }
+        ]
+    }) |> unwrapResult
+```
+
+### Running the server
+
+#### Stdio transport (default)
+
+```fsharp
+[<EntryPoint>]
+let main _ =
+    Server.run server |> fun t -> t.GetAwaiter().GetResult()
+    0
+```
+
+#### HTTP transport
+
+```bash
+dotnet add package FsMcp.Server.Http
+```
+
+```fsharp
+open FsMcp.Server.Http
+
+[<EntryPoint>]
+let main _ =
+    HttpServer.run server (Some "/mcp") "http://localhost:5000"
+    |> fun t -> t.GetAwaiter().GetResult()
+    0
+```
+
+---
+
+## Middleware Guide
+
+### What is `McpMiddleware`?
+
+```fsharp
+type McpMiddleware =
+    McpContext -> (McpContext -> Task<McpResponse>) -> Task<McpResponse>
+```
+
+A middleware receives the current request context and a `next` function. It can inspect/modify context before calling `next`, inspect/modify response after, or short-circuit.
+
+### Logging middleware
+
+```fsharp
+let loggingMiddleware (log: ResizeArray<string>) : McpMiddleware =
+    fun ctx next -> task {
+        log.Add $"[LOG] {ctx.Method} started"
+        let! response = next ctx
+        let status =
+            match response with
+            | Success _ -> "OK"
+            | McpResponseError _ -> "ERROR"
+        log.Add $"[LOG] {ctx.Method} completed: {status}"
+        return response
+    }
+```
+
+### Auth middleware
+
+```fsharp
+let authMiddleware (allowedMethods: Set<string>) : McpMiddleware =
+    fun ctx next ->
+        if allowedMethods.Contains ctx.Method then
+            next ctx
+        else
+            Task.FromResult(McpResponseError (TransportError $"Unauthorized: {ctx.Method}"))
+```
+
+### Composing middleware
+
+```fsharp
+let combined = Middleware.compose middlewareA middlewareB
+let pipeline = Middleware.pipeline [ mw1; mw2; mw3 ]
+```
+
+### ValidationMiddleware
+
+Checks that tool call arguments include all required fields from the tool's JSON Schema:
+
+```fsharp
+let validationMw = ValidationMiddleware.create server
+```
+
+### Telemetry
+
+```fsharp
+let tracingMw = Telemetry.tracing ()           // System.Diagnostics.Activity spans
+let collector = Telemetry.MetricsCollector()    // request counts + avg durations
+let allTelemetry = Telemetry.all ()             // both combined
+```
+
+---
+
+## Client Guide
+
+### ClientTransport
+
+```fsharp
+type ClientTransport =
+    | StdioProcess of command: string * args: string list
+    | HttpEndpoint of uri: Uri * headers: Map<string, string>
+```
+
+Convenience constructors:
+
+```fsharp
+let stdio = ClientTransport.stdio "dotnet" [ "run"; "--project"; "./MyServer" ]
+let http = ClientTransport.http "http://localhost:5000/mcp"
+let httpAuth = ClientTransport.httpWithHeaders "http://localhost:5000/mcp" (Map.ofList [ "Authorization", "Bearer token" ])
+```
+
+### McpClient
+
+```fsharp
+let config : ClientConfig = {
+    Transport = ClientTransport.stdio "dotnet" [ "run"; "--project"; "./MyServer" ]
+    Name = "my-client"
+    ShutdownTimeout = None
+}
+
+task {
+    let! client = McpClient.connect config
+    let! tools = McpClient.listTools client
+    let! result = McpClient.callTool client toolName args
+    let! resource = McpClient.readResource client uri
+    let! prompts = McpClient.listPrompts client
+    do! McpClient.disconnect client
+}
+```
+
+### Return types
+
+| Function | Return type |
+|---|---|
+| McpClient.connect | Task<McpClient> |
+| McpClient.listTools | Task<ToolInfo list> |
+| McpClient.callTool | Task<Result<Content list, McpError>> |
+| McpClient.listResources | Task<ResourceInfo list> |
+| McpClient.readResource | Task<Result<ResourceContents, McpError>> |
+| McpClient.listPrompts | Task<PromptInfo list> |
+| McpClient.getPrompt | Task<Result<McpMessage list, McpError>> |
+| McpClient.disconnect | Task<unit> |
+
+### McpClientAsync module
+
+Async counterparts: `McpClientAsync.connect`, `.listTools`, `.callTool`, `.disconnect` etc.
+
+### ClientPipeline (FsMcp.TaskApi)
+
+Pipe-friendly operations for `taskResult { }` from FsToolkit.ErrorHandling:
+
+```fsharp
+open FsMcp.TaskApi
+open FsToolkit.ErrorHandling
+
+let run () =
+    taskResult {
+        let! client = ClientPipeline.connect config
+        let! tools = ClientPipeline.listTools client
+        let! contents = client |> ClientPipeline.callTool "greet" args
+        let! text = client |> ClientPipeline.callToolText "greet" args
+        let! resource = client |> ClientPipeline.readResource "info://server/status"
+        let! messages = client |> ClientPipeline.getPrompt "summarize" (Map.ofList [ "topic", "MCP" ])
+        do! client |> ClientPipeline.disconnect
+    }
+```
+
+### Error handling
+
+```fsharp
+type McpError =
+    | ValidationFailed of errors: ValidationError list
+    | ToolNotFound of name: ToolName
+    | ResourceNotFound of uri: ResourceUri
+    | PromptNotFound of name: PromptName
+    | HandlerException of exn: exn
+    | TransportError of message: string
+    | ProtocolError of code: int * message: string
+```
+
+---
+
+## Testing Guide
+
+### TestServer — test handlers without transport
+
+```fsharp
+let result = TestServer.callTool config "echo" args |> Async.AwaitTask |> Async.RunSynchronously
+let result = TestServer.readResource config "file:///tmp/test.txt" Map.empty |> Async.AwaitTask |> Async.RunSynchronously
+let result = TestServer.getPrompt config "summarize" (Map.ofList [ "topic", "testing" ]) |> Async.AwaitTask |> Async.RunSynchronously
+let tools = TestServer.listTools config
+let resources = TestServer.listResources config
+let prompts = TestServer.listPrompts config
+```
+
+### Assertion helpers
+
+```fsharp
+let contents = Expect.mcpIsSuccess "tool should succeed" result
+let err = Expect.mcpIsError "should fail" result
+Expect.mcpHasTextContent "7" "add result" result
+Expect.mcpContainsText "hello" "greeting text" contents
+Expect.mcpHasContentCount 1 "single result" contents
+```
+
+### FsCheck generators (McpArbitraries)
+
+| Arbitrary | Type |
+|---|---|
+| McpArbitraries.toolName | Arbitrary<ToolName> |
+| McpArbitraries.resourceUri | Arbitrary<ResourceUri> |
+| McpArbitraries.promptName | Arbitrary<PromptName> |
+| McpArbitraries.mimeType | Arbitrary<MimeType> |
+| McpArbitraries.content | Arbitrary<Content> |
+| McpArbitraries.resourceContents | Arbitrary<ResourceContents> |
+| McpArbitraries.mcpMessage | Arbitrary<McpMessage> |
+| McpArbitraries.toolCallArgs | Arbitrary<JsonElement> |
+
+```fsharp
+McpArbitraries.register ()  // register all globally for FsCheck
+
+testPropertyWithConfig
+    { FsCheckConfig.defaultConfig with arbitrary = [ typeof<McpArbitraries.McpArbitraryProvider> ] }
+    "ToolName roundtrips through value"
+    (fun (tn: ToolName) ->
+        let s = ToolName.value tn
+        let rt = ToolName.create s |> unwrapResult
+        ToolName.value rt = s)
+```
+
+---
+
+## Advanced
+
+### StreamingTool.define — IAsyncEnumerable<Content> handlers
+
+```fsharp
+let streamTool =
+    StreamingTool.define "count" "Count to N" (fun args ->
+        let n = args |> Map.tryFind "n" |> Option.map (fun j -> j.GetInt32()) |> Option.defaultValue 5
+        // return IAsyncEnumerable<Content>
+        ...)
+    |> unwrapResult
+```
+
+Typed variant: `StreamingTool.defineTyped<'T>`
+
+### ContextualTool.define — handlers with progress/log notifications
+
+```fsharp
+let contextualTool =
+    ContextualTool.define<ProcessArgs> "process" "Process data with progress" (fun ctx args -> task {
+        do! ctx.Log { Level = Info; Message = "Starting"; Logger = Some "process" }
+        do! ctx.ReportProgress { Progress = 0.5; Message = Some "Halfway" }
+        return Ok [ Content.text $"Processed: {args.data}" ]
+    })
+```
+
+### DynamicServer — add/remove tools at runtime
+
+```fsharp
+let dynServer = DynamicServer.create initialConfig
+DynamicServer.addTool newTool dynServer
+DynamicServer.removeTool toolName dynServer
+DynamicServer.onToolsChanged dynServer |> Event.add (fun () -> printfn "Tools changed!")
+```
+
+### SamplingTool.define — invoke client LLM from server
+
+```fsharp
+open FsMcp.Sampling
+
+let summarizeTool =
+    SamplingTool.define<SummarizeArgs> "ai_summarize" "Summarize using client LLM"
+        (fun ctx args -> task {
+            let request = SamplingRequest.simple $"Summarize:\n\n{args.text}" 200
+                          |> SamplingRequest.withTemperature 0.3
+            let! result = ctx.Sample request
+            match result with
+            | Ok samplingResult -> return Ok [ Content.text (match samplingResult.Message.Content with Text t -> t | _ -> "") ]
+            | Error err -> return Error (TransportError $"Sampling failed: {err}")
+        })
+    |> unwrapResult
+```
+
+SamplingRequest builders:
+
+```fsharp
+SamplingRequest.simple "prompt" maxTokens
+SamplingRequest.withSystem "system prompt" "user prompt" maxTokens
+|> SamplingRequest.withTemperature 0.7
+|> SamplingRequest.withModel "claude-sonnet"
+|> SamplingRequest.withStopSequences [ "---" ]
+```
+
+Testing: `SamplingTool.mockContext "fixed response"` or `SamplingTool.noOpContext ()`
+
+---
+
+## Types Reference
+
+### Content
+
+```fsharp
+type Content =
+    | Text of text: string
+    | Image of data: byte[] * mimeType: MimeType
+    | EmbeddedResource of resource: ResourceContents
+
+Content.text "hello"
+Content.image bytes mimeType
+Content.embeddedResource resourceContents
+```
+
+### ResourceContents
+
+```fsharp
+type ResourceContents =
+    | TextResource of uri: ResourceUri * mimeType: MimeType * text: string
+    | BlobResource of uri: ResourceUri * mimeType: MimeType * data: byte[]
+```
+
+### McpRole and McpMessage
+
+```fsharp
+type McpRole = User | Assistant
+type McpMessage = { Role: McpRole; Content: Content }
+```
+
+### McpError
+
+```fsharp
+type McpError =
+    | ValidationFailed of errors: ValidationError list
+    | ToolNotFound of name: ToolName
+    | ResourceNotFound of uri: ResourceUri
+    | PromptNotFound of name: PromptName
+    | HandlerException of exn: exn
+    | TransportError of message: string
+    | ProtocolError of code: int * message: string
+```
+
+### ValidationError
+
+```fsharp
+type ValidationError =
+    | EmptyValue of fieldName: string
+    | InvalidFormat of fieldName: string * value: string * expected: string
+    | DuplicateEntry of entryType: string * name: string
+```
+
+### Smart constructors (identifier types)
+
+All return `Result<'T, ValidationError>`:
+
+- `ToolName.create` / `ToolName.value` — validated non-empty tool name
+- `ResourceUri.create` / `ResourceUri.value` — validated absolute URI with scheme
+- `PromptName.create` / `PromptName.value` — validated non-empty prompt name
+- `MimeType.create` / `MimeType.value` — validated MIME type (empty defaults to application/octet-stream)
+- `ServerName.create` / `ServerName.value` — validated non-empty server name
+- `ServerVersion.create` / `ServerVersion.value` — validated non-empty version
+
+### ServerConfig
+
+```fsharp
+type ServerConfig = {
+    Name: ServerName
+    Version: ServerVersion
+    Tools: ToolDefinition list
+    Resources: ResourceDefinition list
+    Prompts: PromptDefinition list
+    Middleware: McpMiddleware list
+    Transport: Transport
+}
+```
+
+### Transport
+
+```fsharp
+type Transport = Stdio | Http of endpoint: string option
+```
+
+### McpMiddleware, McpContext, McpResponse
+
+```fsharp
+type McpMiddleware = McpContext -> (McpContext -> Task<McpResponse>) -> Task<McpResponse>
+type McpContext = { Method: string; Params: JsonElement option; CancellationToken: CancellationToken }
+type McpResponse = Success of JsonElement | McpResponseError of McpError
+```
+
+### Namespace summary
+
+| Namespace | Contains |
+|---|---|
+| FsMcp.Core | Content, ResourceContents, McpRole, McpMessage, McpError, ToolDefinition, ResourceDefinition, PromptDefinition, PromptArgument, unwrapResult |
+| FsMcp.Core.Validation | ValidationError, ToolName, ResourceUri, PromptName, MimeType, ServerName, ServerVersion |
+| FsMcp.Server | ServerConfig, Transport, McpMiddleware, McpContext, McpResponse, mcpServer, mcpTool, Tool, Resource, Prompt, TypedTool, TypedResource, TypedPrompt, TypedHandler, StreamingTool, ContextualTool, Middleware, ValidationMiddleware, Telemetry, DynamicServer, Notifications |
+| FsMcp.Client | ClientTransport, ClientConfig, McpClient, McpClientAsync, ToolInfo, ResourceInfo, PromptInfo |
+| FsMcp.TaskApi | ClientPipeline |
+| FsMcp.Testing | TestServer, Expect, McpArbitraries |
+| FsMcp.Sampling | SamplingRequest, SamplingResult, SamplingError, SamplingContext, SamplingTool, SampleFunc |
+| FsMcp.Server.Http | HttpServer |
