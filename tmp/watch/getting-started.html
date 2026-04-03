@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en" data-root="http://localhost:5555/">
+<head>
+    <meta charset="UTF-8">
+    <meta content="IE=edge" http-equiv="X-UA-Compatible">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <meta content="FsMcp Contributors" name="author">
+    <!-- Opengraph properties (https://ogp.me/) -->
+    <meta property="og:site_name" content="FsMcp">
+    <meta property="og:title" content="Getting Started with FsMcp" />
+    <meta property="og:url" content="http://localhost:5555/getting-started.html">
+    <meta property="og:type" content="website" />
+    <!-- Twitter cards (https://developer.twitter.com/en/docs/twitter-for-websites/cards/overview/summary-card-with-large-image) -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="http://localhost:5555/">
+    <meta name="twitter:title" content="Getting Started with FsMcp">
+    
+    <title>Getting Started with FsMcp | FsMcp</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect">
+    <link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet">
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <link href="http://localhost:5555/img/favicon.ico" rel="icon" sizes="32x32" type="image/png"/>
+    <script type="application/javascript" src="http://localhost:5555/content/fsdocs-theme-set-dark.js"></script>
+    <script type="application/javascript" src="http://localhost:5555/content/fsdocs-details-set-expanded.js"></script>
+    <link href="http://localhost:5555/content/fsdocs-default.css" rel="stylesheet" type="text/css"/>
+    <link href="http://localhost:5555/content/fsdocs-theme.css" rel="stylesheet" type="text/css"/>
+    
+    
+<script type="text/javascript">
+    var wsUri = "ws://localhost:5555/websocket";
+    function init()
+    {
+        websocket = new WebSocket(wsUri);
+        websocket.onmessage = function(evt) {
+            const data = evt.data;
+            if (data.endsWith(".css")) {
+                console.log(`Trying to reload ${data}`);
+                const link = document.querySelector(`link[href*='${data}']`);
+                if (link) {
+                    const href = new URL(link.href);
+                    const ticks = new Date().getTime();
+                    href.searchParams.set("v", ticks);
+                    link.href = href.toString();
+                }
+            }
+            else {
+                console.log('closing');
+                websocket.close();
+                document.location.reload();
+            }
+        }
+    }
+    window.addEventListener("load", init, false);
+</script>
+
+</head>
+<body class="content">
+<header>
+    <div class="start">
+        <div id="menu-toggle">
+            <iconify-icon class="icon closed" height="22" icon="eva:menu-fill" width="22"></iconify-icon>
+            <iconify-icon class="icon open" height="22" icon="mi:close" width="22"></iconify-icon>
+            <input type="checkbox" name="mobile-menu" />
+            <ul class="menu">
+                <li class="nav-header">Links</li>
+                <li class="license-menu-item builtin-menu-item nav-item"><a class="nav-link" href="https://github.com/FsMcp/FsMcp/blob/master/LICENSE.md">License</a>
+                </li>
+                <li class="release-notes-menu-item builtin-menu-item nav-item"><a class="nav-link"
+                                        href="https://github.com/FsMcp/FsMcp/blob/master/RELEASE_NOTES.md">Release
+                    Notes</a></li>
+                <li class="repository-menu-item builtin-menu-item nav-item"><a class="nav-link" href="https://github.com/FsMcp/FsMcp/">Source
+                    Repository</a></li>
+                <li class="nav-header active">
+  Guides
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/server-guide.html">
+    Server Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/middleware-guide.html">
+    Middleware Guide
+  </a>
+</li>             
+<li class="nav-item active">
+  <a class="nav-link" href="http://localhost:5555/getting-started.html">
+    Getting Started with FsMcp
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/advanced.html">
+    Advanced
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/client-guide.html">
+    Client Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/types-reference.html">
+    Types Reference
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/testing-guide.html">
+    Testing Guide
+  </a>
+</li>
+                <li class="nav-header">
+  API Reference
+</li>             
+<li class="nav-item">
+  <a class="nav-link" href="http://localhost:5555/reference/index.html">
+    All Namespaces
+  </a>
+</li>
+            </ul>
+        </div>
+        <a href="https://github.com/FsMcp/FsMcp/">
+            <img alt="Header menu logo" src="http://localhost:5555/img/logo.png">
+            <strong>FsMcp</strong>
+        </a>
+    </div>
+    <div class="end">
+        <a href="https://github.com/FsMcp/FsMcp/" target="_blank">
+            <iconify-icon icon="uil:github" width="26" height="26"></iconify-icon>
+        </a>
+        <iconify-icon id="search-btn" icon="carbon:search" class="search" width="24" height="24"></iconify-icon>
+        <fsdocs-theme-toggle></fsdocs-theme-toggle>
+    </div>
+</header>
+<aside id="fsdocs-main-menu">
+    <ul class="menu">
+        <li class="nav-header">Links</li>
+        <li class="license-menu-item builtin-menu-item nav-item"><a class="nav-link" href="https://github.com/FsMcp/FsMcp/blob/master/LICENSE.md">License</a>
+        </li>
+        <li class="release-notes-menu-item builtin-menu-item nav-item"><a class="nav-link"
+                                href="https://github.com/FsMcp/FsMcp/blob/master/RELEASE_NOTES.md">Release
+            Notes</a></li>
+        <li class="repository-menu-item builtin-menu-item nav-item"><a class="nav-link" href="https://github.com/FsMcp/FsMcp/">Source
+            Repository</a></li>
+        <li class="nav-header active">
+  Guides
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/server-guide.html">
+    Server Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/middleware-guide.html">
+    Middleware Guide
+  </a>
+</li>             
+<li class="nav-item active">
+  <a class="nav-link" href="http://localhost:5555/getting-started.html">
+    Getting Started with FsMcp
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/advanced.html">
+    Advanced
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/client-guide.html">
+    Client Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/types-reference.html">
+    Types Reference
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/testing-guide.html">
+    Testing Guide
+  </a>
+</li>
+        <li class="nav-header">
+  API Reference
+</li>             
+<li class="nav-item">
+  <a class="nav-link" href="http://localhost:5555/reference/index.html">
+    All Namespaces
+  </a>
+</li>
+    </ul>
+</aside>
+<main>
+    <div id="content">
+        
+<h1><a name="Getting-Started-with-FsMcp" class="anchor" href="#Getting-Started-with-FsMcp">Getting Started with FsMcp</a></h1>
+<h2><a name="Prerequisites" class="anchor" href="#Prerequisites">Prerequisites</a></h2>
+<ul>
+<li><a href="https://dotnet.microsoft.com/download">.NET 10 SDK</a> (10.0.100 or later)</li>
+<li>An editor with F# support (VS Code + Ionide, Rider, or Visual Studio)</li>
+</ul>
+<p>Verify your SDK:</p>
+<table class="pre"><tr><td class="snippet"><pre class="fssnip"><code lang="bash">dotnet --version
+# 10.0.100 or higher
+</code></pre></td></tr></table>
+<h2><a name="Install-packages" class="anchor" href="#Install-packages">Install packages</a></h2>
+<p>Create a new console project and add the server package:</p>
+<table class="pre"><tr><td class="snippet"><pre class="fssnip"><code lang="bash">dotnet new console -lang F# -n MyMcpServer
+cd MyMcpServer
+dotnet add package FsMcp.Server
+</code></pre></td></tr></table>
+<p>Other packages you may need later:</p>
+<table class="pre"><tr><td class="snippet"><pre class="fssnip"><code lang="bash">dotnet add package FsMcp.Client       # typed client wrapper
+dotnet add package FsMcp.Testing      # test helpers + FsCheck generators
+dotnet add package FsMcp.TaskApi      # FsToolkit.ErrorHandling pipeline
+dotnet add package FsMcp.Server.Http  # HTTP/SSE transport (opt-in ASP.NET)
+dotnet add package FsMcp.Sampling     # LLM sampling from server tools
+</code></pre></td></tr></table>
+<h2><a name="Hello-world-minimal-MCP-server" class="anchor" href="#Hello-world-minimal-MCP-server">Hello world: minimal MCP server</a></h2>
+<p>Replace <code>Program.fs</code> with:</p>
+<pre class="fssnip highlighted"><code lang="fsharp"><span class="k">open</span> <span class="id">FsMcp</span><span class="pn">.</span><span class="id">Core</span>
+<span class="k">open</span> <span class="id">FsMcp</span><span class="pn">.</span><span class="id">Server</span>
+
+<span class="k">type</span> <span class="id">GreetArgs</span> <span class="o">=</span> <span class="pn">{</span> <span class="id">name</span><span class="pn">:</span> <span onmouseout="hideTip(event, 'fs1', 1)" onmouseover="showTip(event, 'fs1', 1)" class="id">string</span> <span class="pn">}</span>
+
+<span class="k">let</span> <span class="id">server</span> <span class="o">=</span> <span class="id">mcpServer</span> <span class="pn">{</span>
+    <span class="id">name</span> <span class="s">&quot;HelloServer&quot;</span>
+    <span class="id">version</span> <span class="s">&quot;1.0.0&quot;</span>
+
+    <span class="id">tool</span> <span class="pn">(</span><span class="id">TypedTool</span><span class="pn">.</span><span class="id">define</span><span class="pn">&lt;</span><span class="id">GreetArgs</span><span class="pn">&gt;</span> <span class="s">&quot;greet&quot;</span> <span class="s">&quot;Say hello&quot;</span> <span class="pn">(</span><span class="k">fun</span> <span class="id">args</span> <span class="k">-&gt;</span> <span onmouseout="hideTip(event, 'fs2', 2)" onmouseover="showTip(event, 'fs2', 2)" class="id">task</span> <span class="pn">{</span>
+        <span class="k">return</span> <span onmouseout="hideTip(event, 'fs3', 3)" onmouseover="showTip(event, 'fs3', 3)" class="id">Ok</span> <span class="pn">[</span> <span class="id">Content</span><span class="pn">.</span><span class="id">text</span> <span class="s">$&quot;Hello, {</span><span class="id">args</span><span class="pn">.</span><span class="id">name</span><span class="s">}!&quot;</span> <span class="pn">]</span>
+    <span class="pn">}</span><span class="pn">)</span> <span class="o">|&gt;</span> <span class="id">unwrapResult</span><span class="pn">)</span>
+
+    <span class="id">useStdio</span>
+<span class="pn">}</span>
+
+<span class="pn">[&lt;</span><span onmouseout="hideTip(event, 'fs4', 4)" onmouseover="showTip(event, 'fs4', 4)" class="id">EntryPoint</span><span class="pn">&gt;]</span>
+<span class="k">let</span> <span class="id">main</span> <span class="id">_</span> <span class="o">=</span>
+    <span class="id">Server</span><span class="pn">.</span><span class="id">run</span> <span class="id">server</span> <span class="o">|&gt;</span> <span class="k">fun</span> <span class="id">t</span> <span class="k">-&gt;</span> <span class="id">t</span><span class="pn">.</span><span class="id">GetAwaiter</span><span class="pn">(</span><span class="pn">)</span><span class="pn">.</span><span class="id">GetResult</span><span class="pn">(</span><span class="pn">)</span>
+    <span class="n">0</span>
+</code></pre>
+<p>That is a complete, working MCP server in 15 lines. <code>TypedTool.define&lt;GreetArgs&gt;</code> auto-generates the JSON Schema from the <code>GreetArgs</code> record (the <code>name</code> field becomes a required <code>string</code> property). <code>unwrapResult</code> extracts the <code>Ok</code> value or throws with a descriptive error if the tool name is invalid.</p>
+<p>Build and verify:</p>
+<table class="pre"><tr><td class="snippet"><pre class="fssnip"><code lang="bash">dotnet build
+</code></pre></td></tr></table>
+<h2><a name="Test-with-Claude-Desktop" class="anchor" href="#Test-with-Claude-Desktop">Test with Claude Desktop</a></h2>
+<p>Add this to your Claude Desktop config (<code>~/Library/Application Support/Claude/claude_desktop_config.json</code> on macOS, <code>%APPDATA%\Claude\claude_desktop_config.json</code> on Windows):</p>
+<table class="pre"><tr><td class="snippet"><pre class="fssnip"><code lang="json">{
+  "mcpServers": {
+    "hello": {
+      "command": "dotnet",
+      "args": ["run", "--project", "/absolute/path/to/MyMcpServer"]
+    }
+  }
+}
+</code></pre></td></tr></table>
+<p>Restart Claude Desktop. You should see the "greet" tool available. Ask Claude to greet someone and it will call your server.</p>
+<h2><a name="Where-to-go-next" class="anchor" href="#Where-to-go-next">Where to go next</a></h2>
+<ul>
+<li><a href="server-guide.html">Server Guide</a> -- tools, resources, prompts, the <code>mcpServer { }</code> CE in depth</li>
+<li><a href="middleware-guide.html">Middleware Guide</a> -- logging, auth, validation, telemetry</li>
+<li><a href="client-guide.html">Client Guide</a> -- connect to MCP servers from F#</li>
+<li><a href="testing-guide.html">Testing Guide</a> -- test handlers without transport, property testing</li>
+<li><a href="advanced.html">Advanced</a> -- streaming, contextual tools, dynamic servers, sampling</li>
+<li><a href="types-reference.html">Types Reference</a> -- every domain type and smart constructor</li>
+</ul>
+
+        <div class="fsdocs-tip" id="fs1">Multiple items<br />val string: value: &#39;T -&gt; string<br /><br />--------------------<br />type string = System.String</div>
+<div class="fsdocs-tip" id="fs2">val task: TaskBuilder</div>
+<div class="fsdocs-tip" id="fs3">union case Result.Ok: ResultValue: &#39;T -&gt; Result&lt;&#39;T,&#39;TError&gt;</div>
+<div class="fsdocs-tip" id="fs4">Multiple items<br />type EntryPointAttribute =
+  inherit Attribute
+  new: unit -&gt; EntryPointAttribute<br /><br />--------------------<br />new: unit -&gt; EntryPointAttribute</div>
+
+    </div>
+</main>
+<aside id="fsdocs-page-menu">
+    <p id="on-this-page">On this page</p>
+    <ul>
+  <li class="level-1">
+    <a href="#Getting-Started-with-FsMcp">
+      Getting Started with FsMcp
+    </a>
+  </li>
+  <li class="level-2">
+    <a href="#Prerequisites">
+      Prerequisites
+    </a>
+  </li>
+  <li class="level-2">
+    <a href="#Install-packages">
+      Install packages
+    </a>
+  </li>
+  <li class="level-2">
+    <a href="#Hello-world-minimal-MCP-server">
+      Hello world: minimal MCP server
+    </a>
+  </li>
+  <li class="level-2">
+    <a href="#Test-with-Claude-Desktop">
+      Test with Claude Desktop
+    </a>
+  </li>
+  <li class="level-2">
+    <a href="#Where-to-go-next">
+      Where to go next
+    </a>
+  </li>
+</ul>
+</aside>
+<dialog>
+    <input type="search" placeholder="Search docs" />
+    <div class="results">
+        <ul></ul>
+        <p class="empty">Type something to start searching.</p>
+    </div>
+</dialog>
+<script type="module" src="http://localhost:5555/content/fsdocs-tips.js"></script>
+<script type="module" src="http://localhost:5555/content/fsdocs-theme-toggle.js"></script>
+<script type="module" src="http://localhost:5555/content/fsdocs-details-toggle.js"></script>
+<script type="module" src="http://localhost:5555/content/fsdocs-theme.js"></script>
+<script type="module" src="http://localhost:5555/content/fsdocs-search.js"></script>
+
+</body>
+</html>

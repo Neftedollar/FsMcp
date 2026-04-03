@@ -18,3 +18,7 @@ nupkgs/
 .DS_Store
 Thumbs.db
 output/
+website/node_modules/
+website/build/
+website/.docusaurus/
+.fsdocs/

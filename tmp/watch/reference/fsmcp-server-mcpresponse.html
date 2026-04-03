@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en" data-root="http://localhost:5555/">
+<head>
+    <meta charset="UTF-8">
+    <meta content="IE=edge" http-equiv="X-UA-Compatible">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <meta content="FsMcp Contributors" name="author">
+    <!-- Opengraph properties (https://ogp.me/) -->
+    <meta property="og:site_name" content="FsMcp">
+    <meta property="og:title" content="McpResponse (FsMcp)" />
+    <meta property="og:url" content="http://localhost:5555/{{fsdocs-source-basename}}.html">
+    <meta property="og:type" content="website" />
+    <!-- Twitter cards (https://developer.twitter.com/en/docs/twitter-for-websites/cards/overview/summary-card-with-large-image) -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="http://localhost:5555/">
+    <meta name="twitter:title" content="McpResponse (FsMcp)">
+    
+    <title>McpResponse (FsMcp) | FsMcp</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect">
+    <link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet">
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <link href="http://localhost:5555/img/favicon.ico" rel="icon" sizes="32x32" type="image/png"/>
+    <script type="application/javascript" src="http://localhost:5555/content/fsdocs-theme-set-dark.js"></script>
+    <script type="application/javascript" src="http://localhost:5555/content/fsdocs-details-set-expanded.js"></script>
+    <link href="http://localhost:5555/content/fsdocs-default.css" rel="stylesheet" type="text/css"/>
+    <link href="http://localhost:5555/content/fsdocs-theme.css" rel="stylesheet" type="text/css"/>
+    
+    
+<script type="text/javascript">
+    var wsUri = "ws://localhost:5555/websocket";
+    function init()
+    {
+        websocket = new WebSocket(wsUri);
+        websocket.onmessage = function(evt) {
+            const data = evt.data;
+            if (data.endsWith(".css")) {
+                console.log(`Trying to reload ${data}`);
+                const link = document.querySelector(`link[href*='${data}']`);
+                if (link) {
+                    const href = new URL(link.href);
+                    const ticks = new Date().getTime();
+                    href.searchParams.set("v", ticks);
+                    link.href = href.toString();
+                }
+            }
+            else {
+                console.log('closing');
+                websocket.close();
+                document.location.reload();
+            }
+        }
+    }
+    window.addEventListener("load", init, false);
+</script>
+
+</head>
+<body class="api-docs">
+<header>
+    <div class="start">
+        <div id="menu-toggle">
+            <iconify-icon class="icon closed" height="22" icon="eva:menu-fill" width="22"></iconify-icon>
+            <iconify-icon class="icon open" height="22" icon="mi:close" width="22"></iconify-icon>
+            <input type="checkbox" name="mobile-menu" />
+            <ul class="menu">
+                <li class="nav-header">Links</li>
+                <li class="license-menu-item builtin-menu-item nav-item"><a class="nav-link" href="https://github.com/FsMcp/FsMcp/blob/master/LICENSE.md">License</a>
+                </li>
+                <li class="release-notes-menu-item builtin-menu-item nav-item"><a class="nav-link"
+                                        href="https://github.com/FsMcp/FsMcp/blob/master/RELEASE_NOTES.md">Release
+                    Notes</a></li>
+                <li class="repository-menu-item builtin-menu-item nav-item"><a class="nav-link" href="https://github.com/FsMcp/FsMcp/">Source
+                    Repository</a></li>
+                <li class="nav-header ">
+  Guides
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/server-guide.html">
+    Server Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/middleware-guide.html">
+    Middleware Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/getting-started.html">
+    Getting Started with FsMcp
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/advanced.html">
+    Advanced
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/client-guide.html">
+    Client Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/types-reference.html">
+    Types Reference
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/testing-guide.html">
+    Testing Guide
+  </a>
+</li>
+                <li class="nav-header">
+  API Reference
+</li>             
+<li class="nav-item">
+  <a class="nav-link" href="http://localhost:5555/reference/index.html">
+    All Namespaces
+  </a>
+</li>
+            </ul>
+        </div>
+        <a href="https://github.com/FsMcp/FsMcp/">
+            <img alt="Header menu logo" src="http://localhost:5555/img/logo.png">
+            <strong>FsMcp</strong>
+        </a>
+    </div>
+    <div class="end">
+        <a href="https://github.com/FsMcp/FsMcp/" target="_blank">
+            <iconify-icon icon="uil:github" width="26" height="26"></iconify-icon>
+        </a>
+        <iconify-icon id="search-btn" icon="carbon:search" class="search" width="24" height="24"></iconify-icon>
+        <fsdocs-theme-toggle></fsdocs-theme-toggle>
+    </div>
+</header>
+<aside id="fsdocs-main-menu">
+    <ul class="menu">
+        <li class="nav-header">Links</li>
+        <li class="license-menu-item builtin-menu-item nav-item"><a class="nav-link" href="https://github.com/FsMcp/FsMcp/blob/master/LICENSE.md">License</a>
+        </li>
+        <li class="release-notes-menu-item builtin-menu-item nav-item"><a class="nav-link"
+                                href="https://github.com/FsMcp/FsMcp/blob/master/RELEASE_NOTES.md">Release
+            Notes</a></li>
+        <li class="repository-menu-item builtin-menu-item nav-item"><a class="nav-link" href="https://github.com/FsMcp/FsMcp/">Source
+            Repository</a></li>
+        <li class="nav-header ">
+  Guides
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/server-guide.html">
+    Server Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/middleware-guide.html">
+    Middleware Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/getting-started.html">
+    Getting Started with FsMcp
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/advanced.html">
+    Advanced
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/client-guide.html">
+    Client Guide
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/types-reference.html">
+    Types Reference
+  </a>
+</li>             
+<li class="nav-item ">
+  <a class="nav-link" href="http://localhost:5555/testing-guide.html">
+    Testing Guide
+  </a>
+</li>
+        <li class="nav-header">
+  API Reference
+</li>             
+<li class="nav-item">
+  <a class="nav-link" href="http://localhost:5555/reference/index.html">
+    All Namespaces
+  </a>
+</li>
+    </ul>
+</aside>
+<main>
+    <div id="content">
+        <div>
+  <h2>
+    McpResponse Type
+  </h2>
+  <dl class="fsdocs-metadata">
+    <dt>
+      Namespace: 
+      <a href="http://localhost:5555/reference/fsmcp-server.html">
+        FsMcp.Server
+      </a>
+    </dt>
+    <dt>
+      Assembly: FsMcp.Server.dll
+    </dt>
+    <dt>
+      Base Type: 
+      <code>obj</code>
+    </dt>
+    <dt>
+      All Interfaces: 
+      <code><span><a href="https://learn.microsoft.com/dotnet/api/system.iequatable-1">IEquatable</a>&lt;<a href="http://localhost:5555/reference/fsmcp-server-mcpresponse.html">McpResponse</a>&gt;</span></code>
+      , 
+      <code><a href="https://learn.microsoft.com/dotnet/api/system.collections.istructuralequatable">IStructuralEquatable</a></code>
+    </dt>
+  </dl>
+  <div class="fsdocs-xmldoc">
+    <div>
+      <div class="fsdocs-summary-contents">
+        <p class="fsdocs-summary">
+           Response from middleware pipeline.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div></div>
+  <div></div>
+  <div></div>
+  <div>
+    <h3>
+      Union cases
+    </h3>
+    <table class="table outer-list fsdocs-member-list">
+      <thead>
+        <tr>
+          <td class="fsdocs-member-list-header">
+            Union case
+          </td>
+          <td class="fsdocs-member-list-header">
+            Description
+            <fsdocs-details-toggle></fsdocs-details-toggle>
+          </td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="fsdocs-member-usage">
+            <div>
+              <code onmouseout="hideTip(event, '227', 227)" onmouseover="showTip(event, '227', 227)">
+                <p>
+                  <a id="McpResponseError">
+                    <a href="#McpResponseError">
+                      <code><span>McpResponseError&#32;<a href="http://localhost:5555/reference/fsmcp-core-mcperror.html">McpError</a></span></code>
+                    </a>
+                  </a>
+                </p>
+              </code>
+              <div class="fsdocs-tip" id="227">
+                <div class="member-tooltip">
+                  Full Usage: 
+                  <code><span>McpResponseError&#32;<a href="http://localhost:5555/reference/fsmcp-core-mcperror.html">McpError</a></span></code>
+                  <br/>
+                  <br/>
+                  Parameters: 
+                  <ul>
+                    <span>
+                      <b>
+                        Item
+                      </b>
+                      :
+                      <code><a href="http://localhost:5555/reference/fsmcp-core-mcperror.html">McpError</a></code>
+                    </span>
+                    <br/>
+                  </ul>
+                  <br/>
+                </div>
+              </div>
+            </div>
+          </td>
+          <td class="fsdocs-member-xmldoc">
+            <div class="fsdocs-member-xmldoc-column">
+              <div class="icon-button-row">
+                <a href="https://github.com/FsMcp/FsMcp/tree/master/src/FsMcp.Server/Server.fs#L25-25" class="fsdocs-source-link" title="Source on GitHub">
+                  <iconify-icon icon="ri:github-fill" height="24" width="24"></iconify-icon>
+                </a>
+              </div>
+              <dl class="fsdocs-params">
+                <dt class="fsdocs-param">
+                  <span class="fsdocs-param-name">
+                    Item
+                  </span>
+                  :
+                  <code><a href="http://localhost:5555/reference/fsmcp-core-mcperror.html">McpError</a></code>
+                </dt>
+                <dd class="fsdocs-param-docs"></dd>
+              </dl>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="fsdocs-member-usage">
+            <div>
+              <code onmouseout="hideTip(event, '228', 228)" onmouseover="showTip(event, '228', 228)">
+                <p>
+                  <a id="Success">
+                    <a href="#Success">
+                      <code><span>Success&#32;<a href="https://learn.microsoft.com/dotnet/api/system.text.json.jsonelement">JsonElement</a></span></code>
+                    </a>
+                  </a>
+                </p>
+              </code>
+              <div class="fsdocs-tip" id="228">
+                <div class="member-tooltip">
+                  Full Usage: 
+                  <code><span>Success&#32;<a href="https://learn.microsoft.com/dotnet/api/system.text.json.jsonelement">JsonElement</a></span></code>
+                  <br/>
+                  <br/>
+                  Parameters: 
+                  <ul>
+                    <span>
+                      <b>
+                        Item
+                      </b>
+                      :
+                      <code><a href="https://learn.microsoft.com/dotnet/api/system.text.json.jsonelement">JsonElement</a></code>
+                    </span>
+                    <br/>
+                  </ul>
+                  <br/>
+                </div>
+              </div>
+            </div>
+          </td>
+          <td class="fsdocs-member-xmldoc">
+            <div class="fsdocs-member-xmldoc-column">
+              <div class="icon-button-row">
+                <a href="https://github.com/FsMcp/FsMcp/tree/master/src/FsMcp.Server/Server.fs#L24-24" class="fsdocs-source-link" title="Source on GitHub">
+                  <iconify-icon icon="ri:github-fill" height="24" width="24"></iconify-icon>
+                </a>
+              </div>
+              <dl class="fsdocs-params">
+                <dt class="fsdocs-param">
+                  <span class="fsdocs-param-name">
+                    Item
+                  </span>
+                  :
+                  <code><a href="https://learn.microsoft.com/dotnet/api/system.text.json.jsonelement">JsonElement</a></code>
+                </dt>
+                <dd class="fsdocs-param-docs"></dd>
+              </dl>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div></div>
+  <div></div>
+  <div></div>
+  <div>
+    <h3>
+      Instance members
+    </h3>
+    <table class="table outer-list fsdocs-member-list">
+      <thead>
+        <tr>
+          <td class="fsdocs-member-list-header">
+            Instance member
+          </td>
+          <td class="fsdocs-member-list-header">
+            Description
+            <fsdocs-details-toggle></fsdocs-details-toggle>
+          </td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="fsdocs-member-usage">
+            <div>
+              <code onmouseout="hideTip(event, '229', 229)" onmouseover="showTip(event, '229', 229)">
+                <p>
+                  <a id="IsMcpResponseError">
+                    <a href="#IsMcpResponseError">
+                      <code><span>this.IsMcpResponseError</span></code>
+                    </a>
+                  </a>
+                </p>
+              </code>
+              <div class="fsdocs-tip" id="229">
+                <div class="member-tooltip">
+                  Full Usage: 
+                  <code><span>this.IsMcpResponseError</span></code>
+                  <br/>
+                  <br/>
+                  <span>
+                    Returns: 
+                    <code>bool</code>
+                  </span>
+                  <br/>
+                </div>
+              </div>
+            </div>
+          </td>
+          <td class="fsdocs-member-xmldoc">
+            <div class="fsdocs-member-xmldoc-column">
+              <div class="icon-button-row">
+                <a href="https://github.com/FsMcp/FsMcp/tree/master/src/FsMcp.Server/Server.fs#L25-25" class="fsdocs-source-link" title="Source on GitHub">
+                  <iconify-icon icon="ri:github-fill" height="24" width="24"></iconify-icon>
+                </a>
+              </div>
+              <dl class="fsdocs-returns">
+                <dt>
+                  <span class="fsdocs-return-name">
+                    Returns: 
+                  </span>
+                  <code>bool</code>
+                </dt>
+                <dd class="fsdocs-return-docs"></dd>
+              </dl>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="fsdocs-member-usage">
+            <div>
+              <code onmouseout="hideTip(event, '230', 230)" onmouseover="showTip(event, '230', 230)">
+                <p>
+                  <a id="IsSuccess">
+                    <a href="#IsSuccess">
+                      <code><span>this.IsSuccess</span></code>
+                    </a>
+                  </a>
+                </p>
+              </code>
+              <div class="fsdocs-tip" id="230">
+                <div class="member-tooltip">
+                  Full Usage: 
+                  <code><span>this.IsSuccess</span></code>
+                  <br/>
+                  <br/>
+                  <span>
+                    Returns: 
+                    <code>bool</code>
+                  </span>
+                  <br/>
+                </div>
+              </div>
+            </div>
+          </td>
+          <td class="fsdocs-member-xmldoc">
+            <div class="fsdocs-member-xmldoc-column">
+              <div class="icon-button-row">
+                <a href="https://github.com/FsMcp/FsMcp/tree/master/src/FsMcp.Server/Server.fs#L24-24" class="fsdocs-source-link" title="Source on GitHub">
+                  <iconify-icon icon="ri:github-fill" height="24" width="24"></iconify-icon>
+                </a>
+              </div>
+              <dl class="fsdocs-returns">
+                <dt>
+                  <span class="fsdocs-return-name">
+                    Returns: 
+                  </span>
+                  <code>bool</code>
+                </dt>
+                <dd class="fsdocs-return-docs"></dd>
+              </dl>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div></div>
+</div>
+        
+    </div>
+</main>
+<aside id="fsdocs-page-menu">
+    <p id="on-this-page">On this page</p>
+    <div class="empty"></div>
+</aside>
+<dialog>
+    <input type="search" placeholder="Search docs" />
+    <div class="results">
+        <ul></ul>
+        <p class="empty">Type something to start searching.</p>
+    </div>
+</dialog>
+<script type="module" src="http://localhost:5555/content/fsdocs-tips.js"></script>
+<script type="module" src="http://localhost:5555/content/fsdocs-theme-toggle.js"></script>
+<script type="module" src="http://localhost:5555/content/fsdocs-details-toggle.js"></script>
+<script type="module" src="http://localhost:5555/content/fsdocs-theme.js"></script>
+<script type="module" src="http://localhost:5555/content/fsdocs-search.js"></script>
+
+</body>
+</html>
