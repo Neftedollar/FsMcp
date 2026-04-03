@@ -19,7 +19,7 @@ function Hero() {
           <Link className="button button--primary button--lg" to="/docs">
             Get Started
           </Link>
-          <Link className="button button--secondary button--lg" href="https://github.com/FsMcp/FsMcp">
+          <Link className="button button--secondary button--lg" href="https://github.com/Neftedollar/FsMcp">
             GitHub
           </Link>
         </div>

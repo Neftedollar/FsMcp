@@ -7,10 +7,10 @@ const config: Config = {
   tagline: 'Build MCP servers in F# with type safety and zero boilerplate',
   favicon: 'img/favicon.ico',
 
-  url: 'https://fsmcp.github.io',
+  url: 'https://neftedollar.github.io',
   baseUrl: '/FsMcp/',
 
-  organizationName: 'FsMcp',
+  organizationName: 'Neftedollar',
   projectName: 'FsMcp',
 
   onBrokenLinks: 'throw',
@@ -27,7 +27,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/FsMcp/FsMcp/tree/main/website/',
+          editUrl: 'https://github.com/Neftedollar/FsMcp/tree/main/website/',
         },
         blog: false,
         theme: {
@@ -61,7 +61,7 @@ const config: Config = {
           label: 'Docs',
         },
         {
-          href: 'https://github.com/FsMcp/FsMcp',
+          href: 'https://github.com/Neftedollar/FsMcp',
           label: 'GitHub',
           position: 'right',
         },
@@ -86,8 +86,8 @@ const config: Config = {
         {
           title: 'Community',
           items: [
-            { label: 'GitHub Issues', href: 'https://github.com/FsMcp/FsMcp/issues' },
-            { label: 'Contributing', href: 'https://github.com/FsMcp/FsMcp/blob/main/CONTRIBUTING.md' },
+            { label: 'GitHub Issues', href: 'https://github.com/Neftedollar/FsMcp/issues' },
+            { label: 'Contributing', href: 'https://github.com/Neftedollar/FsMcp/blob/main/CONTRIBUTING.md' },
           ],
         },
       ],
