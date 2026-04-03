@@ -2,8 +2,7 @@
 
 ## Prerequisites
 
-- .NET 8 SDK or later
-- F# (included with .NET SDK)
+- .NET 10 SDK (or later)
 
 ## 1. Create a new project
 
@@ -17,34 +16,31 @@ dotnet add reference ../src/FsMcp.Server/FsMcp.Server.fsproj
 ## 2. Define an MCP server with a tool
 
 ```fsharp
-open FsMcp.Types
-open FsMcp.Server.Builder
+open FsMcp.Core
+open FsMcp.Core.Validation
+open FsMcp.Server
 
 [<EntryPoint>]
-let main argv =
+let main _ =
     let server = mcpServer {
         name "My Server"
         version "1.0.0"
 
         tool (
-            Tool.define
-                "greet"
-                "Greets a person by name"
-                (fun args -> task {
-                    let name =
-                        args
-                        |> Map.tryFind "name"
-                        |> Option.map (fun j -> j.GetString())
-                        |> Option.defaultValue "World"
-                    return Ok [ Content.text $"Hello, {name}!" ]
-                })
-            |> Result.defaultWith (fun e -> failwith $"Invalid tool: %A{e}")
-        )
+            Tool.define "greet" "Greets a person by name" (fun args -> task {
+                let name =
+                    args
+                    |> Map.tryFind "name"
+                    |> Option.map (fun j -> j.GetString())
+                    |> Option.defaultValue "World"
+                return Ok [ Content.text $"Hello, {name}!" ]
+            })
+            |> Result.defaultWith (fun e -> failwith $"%A{e}"))
 
         useStdio
     }
 
-    server |> Server.run |> fun t -> t.GetAwaiter().GetResult()
+    Server.run server |> fun t -> t.GetAwaiter().GetResult()
     0
 ```
 
@@ -54,49 +50,73 @@ let main argv =
 dotnet run
 ```
 
-The server is now listening on stdio. Connect with any MCP client
-(e.g., Claude Desktop, VS Code MCP extension).
+The server listens on stdio. Connect with Claude Desktop, VS Code, or any MCP client.
 
-## 4. Connect as a client (from another F# project)
+## 4. Run over HTTP instead
 
 ```fsharp
-open FsMcp.Types
+Server.runHttp server (Some "/mcp") "http://localhost:3001"
+|> fun t -> t.GetAwaiter().GetResult()
+```
+
+## 5. Connect as a client (from another F# project)
+
+```fsharp
+open FsMcp.Core
+open FsMcp.Core.Validation
 open FsMcp.Client
 
 let demo () = task {
     let config = {
-        Transport = Transport.stdio "dotnet" ["run"; "--project"; "../MyMcpServer"]
+        Transport = ClientTransport.stdio "dotnet" ["run"; "--project"; "../MyMcpServer"]
         Name = "Test Client"
         ShutdownTimeout = None
     }
 
-    let! client = Client.connect config
-    let! tools = Client.listTools client
-    printfn "Available tools: %A" (tools |> List.map (fun t -> ToolName.value t.Name))
+    let! client = McpClient.connect config
+    let! tools = McpClient.listTools client
+    for t in tools do printfn "Tool: %s" t.Name
 
     let toolName = ToolName.create "greet" |> Result.defaultWith failwith
-    let! result = Client.callTool client toolName (Map.ofList ["name", box "FsMcp"])
-
+    let args = Map.ofList [
+        "name", System.Text.Json.JsonDocument.Parse("\"FsMcp\"").RootElement
+    ]
+    let! result = McpClient.callTool client toolName args
     match result with
-    | Ok contents -> contents |> List.iter (fun c -> printfn "%A" c)
+    | Ok contents -> for c in contents do printfn "%A" c
     | Error err -> printfn "Error: %A" err
 
-    do! Client.disconnect client
+    do! McpClient.disconnect client
 }
 ```
 
-## 5. Run tests
+## 6. Test your handlers without transport
+
+```fsharp
+open FsMcp.Testing
+
+// Direct handler invocation — no network, no process spawning
+let result =
+    TestServer.callTool serverConfig "greet"
+        (Map.ofList ["name", System.Text.Json.JsonDocument.Parse("\"World\"").RootElement])
+    |> Async.AwaitTask |> Async.RunSynchronously
+
+// Assertion helpers
+result |> Expect.mcpHasTextContent "Hello, World!" "greet works"
+```
+
+## 7. Run tests
 
 ```bash
 dotnet test
 ```
 
-All Expecto + FsCheck tests run via `dotnet test`.
-
 ## Validation checklist
 
-- [ ] Server starts and accepts MCP connections
+- [ ] Server starts and accepts MCP connections via stdio
+- [ ] Server starts and accepts MCP connections via HTTP
 - [ ] `tools/list` returns the registered tool
 - [ ] `tools/call` with `{"name":"FsMcp"}` returns `"Hello, FsMcp!"`
 - [ ] Client connects, lists tools, calls tool, gets typed result
-- [ ] All tests pass via `dotnet test`
+- [ ] TestServer.callTool invokes handler directly
+- [ ] All 227 tests pass via `dotnet test`
