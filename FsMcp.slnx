@@ -3,12 +3,14 @@
     <Project Path="src/FsMcp.Client/FsMcp.Client.fsproj" />
     <Project Path="src/FsMcp.Core/FsMcp.Core.fsproj" />
     <Project Path="src/FsMcp.Server/FsMcp.Server.fsproj" />
+    <Project Path="src/FsMcp.TaskApi/FsMcp.TaskApi.fsproj" />
     <Project Path="src/FsMcp.Testing/FsMcp.Testing.fsproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FsMcp.Client.Tests/FsMcp.Client.Tests.fsproj" />
     <Project Path="tests/FsMcp.Core.Tests/FsMcp.Core.Tests.fsproj" />
     <Project Path="tests/FsMcp.Server.Tests/FsMcp.Server.Tests.fsproj" />
+    <Project Path="tests/FsMcp.TaskApi.Tests/FsMcp.TaskApi.Tests.fsproj" />
     <Project Path="tests/FsMcp.Testing.Tests/FsMcp.Testing.Tests.fsproj" />
   </Folder>
 </Solution>
