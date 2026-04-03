@@ -22,3 +22,6 @@ website/node_modules/
 website/build/
 website/.docusaurus/
 .fsdocs/
+output/
+tmp/
+.fsdocs/
