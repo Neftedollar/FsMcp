@@ -1,25 +1,26 @@
 name: Publish NuGet
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
 
-permissions:
-  contents: write    # for GitHub Release
-  id-token: write    # for NuGet Trusted Publishing OIDC
-
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: release  # optional: lock to a GitHub environment
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: 10.0.x
 
       - name: Restore
         run: dotnet restore
@@ -37,8 +38,13 @@ jobs:
       - name: Pack
         run: dotnet pack --configuration Release --no-build -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o ./nupkgs
 
-      # Trusted Publishing — no API key needed
-      # OIDC token is exchanged for a short-lived NuGet API key
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: ./nupkgs/*.nupkg
+          if-no-files-found: error
+
       - name: NuGet login (Trusted Publishing)
         id: nuget-login
         uses: NuGet/login@v1
@@ -46,7 +52,7 @@ jobs:
           user: Neftedollar
 
       - name: Push to NuGet
-        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push "./nupkgs/*.nupkg" --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
