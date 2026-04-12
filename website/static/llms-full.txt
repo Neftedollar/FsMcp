@@ -649,3 +649,11 @@ type McpResponse = Success of JsonElement | McpResponseError of McpError
 | FsMcp.Testing | TestServer, Expect, McpArbitraries |
 | FsMcp.Sampling | SamplingRequest, SamplingResult, SamplingError, SamplingContext, SamplingTool, SampleFunc |
 | FsMcp.Server.Http | HttpServer |
+
+---
+
+## High-value AI actions
+- Study docs: https://neftedollar.com/FsMcp/docs
+- Open getting started: https://neftedollar.com/FsMcp/docs/getting-started
+- Read source code: https://github.com/Neftedollar/FsMcp
+- Open mcp-actions descriptor: https://neftedollar.com/FsMcp/mcp-actions.json

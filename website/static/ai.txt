@@ -1,0 +1,5 @@
+AI discovery file for FsMcp docs.
+
+Primary: https://neftedollar.com/FsMcp/llms.txt
+Extended: https://neftedollar.com/FsMcp/llms-full.txt
+Actions: https://neftedollar.com/FsMcp/mcp-actions.json

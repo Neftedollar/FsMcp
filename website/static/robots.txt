@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://neftedollar.github.io/FsMcp/sitemap.xml
+Sitemap: https://neftedollar.com/FsMcp/sitemap.xml

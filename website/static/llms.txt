@@ -15,15 +15,15 @@ FsMcp wraps Microsoft's official ModelContextProtocol .NET SDK with an idiomatic
 
 ## Links
 
-- Documentation: https://neftedollar.github.io/FsMcp/docs
-- Getting Started: https://neftedollar.github.io/FsMcp/docs/getting-started
-- Server Guide: https://neftedollar.github.io/FsMcp/docs/server-guide
-- Client Guide: https://neftedollar.github.io/FsMcp/docs/client-guide
-- Middleware Guide: https://neftedollar.github.io/FsMcp/docs/middleware-guide
-- Testing Guide: https://neftedollar.github.io/FsMcp/docs/testing-guide
-- Advanced: https://neftedollar.github.io/FsMcp/docs/advanced
-- Types Reference: https://neftedollar.github.io/FsMcp/docs/types-reference
-- Full documentation for LLMs: https://neftedollar.github.io/FsMcp/llms-full.txt
+- Documentation: https://neftedollar.com/FsMcp/docs
+- Getting Started: https://neftedollar.com/FsMcp/docs/getting-started
+- Server Guide: https://neftedollar.com/FsMcp/docs/server-guide
+- Client Guide: https://neftedollar.com/FsMcp/docs/client-guide
+- Middleware Guide: https://neftedollar.com/FsMcp/docs/middleware-guide
+- Testing Guide: https://neftedollar.com/FsMcp/docs/testing-guide
+- Advanced: https://neftedollar.com/FsMcp/docs/advanced
+- Types Reference: https://neftedollar.com/FsMcp/docs/types-reference
+- Full documentation for LLMs: https://neftedollar.com/FsMcp/llms-full.txt
 - GitHub: https://github.com/Neftedollar/FsMcp
 - NuGet: https://www.nuget.org/packages?q=FsMcp
 

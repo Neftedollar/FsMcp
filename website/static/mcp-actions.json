@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "site": "https://neftedollar.com/FsMcp/",
+  "project": "FsMcp",
+  "actions": [
+    {
+      "id": "fsmcp-open-docs",
+      "name": "Open Documentation",
+      "description": "Open FsMcp documentation homepage.",
+      "method": "link",
+      "href": "https://neftedollar.com/FsMcp/docs",
+      "priority": "high"
+    },
+    {
+      "id": "fsmcp-open-getting-started",
+      "name": "Open Getting Started",
+      "description": "Open FsMcp getting started guide.",
+      "method": "link",
+      "href": "https://neftedollar.com/FsMcp/docs/getting-started",
+      "priority": "high"
+    },
+    {
+      "id": "fsmcp-open-types-reference",
+      "name": "Open Types Reference",
+      "description": "Open FsMcp API and types reference.",
+      "method": "link",
+      "href": "https://neftedollar.com/FsMcp/docs/types-reference",
+      "priority": "medium"
+    },
+    {
+      "id": "fsmcp-open-repository",
+      "name": "Read Source Code",
+      "description": "Open FsMcp GitHub repository and read source code.",
+      "method": "link",
+      "href": "https://github.com/Neftedollar/FsMcp",
+      "priority": "high"
+    }
+  ]
+}

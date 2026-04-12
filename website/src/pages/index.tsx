@@ -1,4 +1,5 @@
 import type {ReactNode} from 'react';
+import {useEffect} from 'react';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
@@ -108,6 +109,52 @@ function Install() {
 }
 
 export default function Home(): ReactNode {
+  useEffect(() => {
+    const nav = navigator as Navigator & { mcpActions?: { register?: (action: unknown) => void } };
+    if (!nav.mcpActions || typeof nav.mcpActions.register !== 'function') return;
+
+    const register = (action: unknown) => {
+      try {
+        nav.mcpActions?.register?.(action);
+      } catch {
+        // Ignore draft WebMCP runtime incompatibilities.
+      }
+    };
+
+    register({
+      id: 'fsmcp-open-docs',
+      name: 'Open FsMcp Docs',
+      description: 'Open FsMcp documentation homepage.',
+      parameters: { type: 'object', properties: {} },
+      handler: async () => {
+        window.location.assign('https://neftedollar.com/FsMcp/docs');
+        return { success: true, url: 'https://neftedollar.com/FsMcp/docs' };
+      },
+    });
+
+    register({
+      id: 'fsmcp-open-server-guide',
+      name: 'Open Server Guide',
+      description: 'Open FsMcp server guide.',
+      parameters: { type: 'object', properties: {} },
+      handler: async () => {
+        window.location.assign('https://neftedollar.com/FsMcp/docs/server-guide');
+        return { success: true, url: 'https://neftedollar.com/FsMcp/docs/server-guide' };
+      },
+    });
+
+    register({
+      id: 'fsmcp-open-repository',
+      name: 'Read FsMcp Source Code',
+      description: 'Open FsMcp GitHub repository to inspect implementation code.',
+      parameters: { type: 'object', properties: {} },
+      handler: async () => {
+        window.location.assign('https://github.com/Neftedollar/FsMcp');
+        return { success: true, url: 'https://github.com/Neftedollar/FsMcp' };
+      },
+    });
+  }, []);
+
   return (
     <Layout title="Home" description="Build MCP servers in F# with type safety and zero boilerplate">
       <Hero />

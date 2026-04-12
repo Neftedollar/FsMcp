@@ -7,7 +7,7 @@ const config: Config = {
   tagline: 'Build MCP servers in F# with type safety and zero boilerplate',
   favicon: 'img/favicon.ico',
 
-  url: 'https://neftedollar.github.io',
+  url: 'https://neftedollar.com',
   baseUrl: '/FsMcp/',
 
   organizationName: 'Neftedollar',
@@ -51,6 +51,14 @@ const config: Config = {
   ],
 
   headTags: [
+    {
+      tagName: 'link',
+      attributes: { rel: 'mcp-actions', href: '/FsMcp/mcp-actions.json' },
+    },
+    {
+      tagName: 'link',
+      attributes: { rel: 'alternate', type: 'text/plain', href: '/FsMcp/llms.txt', title: 'LLMs.txt' },
+    },
     // SEO: canonical description
     {
       tagName: 'meta',
@@ -85,7 +93,7 @@ const config: Config = {
     },
     {
       tagName: 'meta',
-      attributes: { property: 'og:url', content: 'https://neftedollar.github.io/FsMcp/' },
+      attributes: { property: 'og:url', content: 'https://neftedollar.com/FsMcp/' },
     },
     // Twitter Card
     {
