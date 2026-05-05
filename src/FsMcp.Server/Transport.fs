@@ -27,7 +27,9 @@ module Server =
         let schema =
             match td.InputSchema with
             | Some s -> s
-            | None -> JsonDocument.Parse("""{"type":"object","properties":{}}""").RootElement.Clone()
+            | None ->
+                use doc = JsonDocument.Parse("""{"type":"object","properties":{}}""")
+                doc.RootElement.Clone()
 
         override _.Name = ToolName.value td.Name
         override _.Description = td.Description
@@ -149,7 +151,11 @@ module Server =
     //  Registration
     // ────────────────────────────────────────────────
 
-    let internal registerAllInternal (builder: IMcpServerBuilder) (config: ServerConfig) =
+    /// Register all tools, resources, and prompts from a ServerConfig.
+    /// When the config has subscribable resources, also registers subscribe/unsubscribe
+    /// handlers and returns a populated ResourceSubscriptionRegistry.
+    /// Returns None when there are no resources (no subscription wiring needed).
+    let internal registerAllInternal (builder: IMcpServerBuilder) (config: ServerConfig) : ResourceSubscriptionRegistry option =
         if not (List.isEmpty config.Tools) then
             builder.WithTools(config.Tools |> List.map createSdkTool) |> ignore
         if not (List.isEmpty config.Resources) then
@@ -157,6 +163,57 @@ module Server =
                 config.Resources |> List.map createSdkResource :> IEnumerable<McpServerResource>) |> ignore
         if not (List.isEmpty config.Prompts) then
             builder.WithPrompts(config.Prompts |> List.map createSdkPrompt) |> ignore
+
+        // Wire subscribe/unsubscribe handlers if there are resources (B1, B2, B3)
+        if not (List.isEmpty config.Resources) then
+            let registry = ResourceSubscriptions.create ()
+
+            let subscribeHandler =
+                McpRequestHandler<ModelContextProtocol.Protocol.SubscribeRequestParams, ModelContextProtocol.Protocol.EmptyResult>(
+                    fun req _ct ->
+                        ValueTask<ModelContextProtocol.Protocol.EmptyResult>(task {
+                            let uriStr = if isNull req.Params then "" else req.Params.Uri
+                            let server = req.Server
+                            let sessionId =
+                                if isNull server then ""
+                                else server.SessionId |> Option.ofObj |> Option.defaultValue ""
+                            match ResourceUri.create uriStr with
+                            | Ok uri ->
+                                // Track the per-session McpServer for notification dispatch
+                                registry.SessionServers.[sessionId] <- server
+                                ResourceSubscriptions.subscribe sessionId uri registry |> ignore
+                            | Error _ -> () // Ignore invalid URIs silently
+                            return ModelContextProtocol.Protocol.EmptyResult()
+                        }))
+
+            let unsubscribeHandler =
+                McpRequestHandler<ModelContextProtocol.Protocol.UnsubscribeRequestParams, ModelContextProtocol.Protocol.EmptyResult>(
+                    fun req _ct ->
+                        ValueTask<ModelContextProtocol.Protocol.EmptyResult>(task {
+                            let uriStr = if isNull req.Params then "" else req.Params.Uri
+                            let sessionId =
+                                if isNull req.Server then ""
+                                else req.Server.SessionId |> Option.ofObj |> Option.defaultValue ""
+                            match ResourceUri.create uriStr with
+                            | Ok uri ->
+                                // Remove the specific (session, uri) subscription(s)
+                                let toRemove =
+                                    registry.Subscribers
+                                    |> Seq.filter (fun kv ->
+                                        kv.Value.SessionId = sessionId && kv.Value.Uri = uri)
+                                    |> Seq.map (fun kv -> kv.Key)
+                                    |> Seq.toList
+                                for id in toRemove do
+                                    ResourceSubscriptions.unsubscribe id registry
+                            | Error _ -> ()
+                            return ModelContextProtocol.Protocol.EmptyResult()
+                        }))
+
+            builder.WithSubscribeToResourcesHandler(subscribeHandler) |> ignore
+            builder.WithUnsubscribeFromResourcesHandler(unsubscribeHandler) |> ignore
+            Some registry
+        else
+            None
 
     // ────────────────────────────────────────────────
     //  Run (stdio)
@@ -172,9 +229,43 @@ module Server =
 
             let mcpBuilder = hostBuilder.Services.AddMcpServer()
             mcpBuilder.WithStdioServerTransport() |> ignore
-            registerAllInternal mcpBuilder config
+            registerAllInternal mcpBuilder config |> ignore
 
-            do! hostBuilder.Build().RunAsync()
+            use host = hostBuilder.Build()
+            do! host.RunAsync()
+        }
+
+    /// Run the MCP server over stdio and expose the subscription registry.
+    /// The onRegistry callback fires once, before the host starts, with the registry
+    /// (or None when the config has no resources). The host then runs to completion.
+    ///
+    /// Capture the registry in the caller so tool handlers can later trigger
+    /// notifyChanged. The typical pattern is a mutable cell or ref:
+    ///
+    ///     let mutable registry = None
+    ///     do! Server.runWithSubscriptions config (fun r ->
+    ///         registry <- r
+    ///         Task.FromResult(()))
+    ///     // From a tool handler that mutates a watched resource:
+    ///     // registry |> Option.iter (ResourceSubscriptions.notifyChanged uri >> ignore)
+    let runWithSubscriptions
+        (config: ServerConfig)
+        (onRegistry: ResourceSubscriptionRegistry option -> Task<unit>)
+        : Task<unit> =
+        task {
+            let hostBuilder = Host.CreateApplicationBuilder()
+            hostBuilder.Logging.AddConsole(fun opts ->
+                opts.LogToStandardErrorThreshold <- LogLevel.Trace) |> ignore
+            hostBuilder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
+
+            let mcpBuilder = hostBuilder.Services.AddMcpServer()
+            mcpBuilder.WithStdioServerTransport() |> ignore
+            let registry = registerAllInternal mcpBuilder config
+
+            do! onRegistry registry
+
+            use host = hostBuilder.Build()
+            do! host.RunAsync()
         }
 
     /// Run the MCP server over stdio as an Async computation.

@@ -40,23 +40,40 @@ module Telemetry =
                 return McpResponseError (HandlerException ex)
         }
 
+    type internal RingBuffer(capacity: int) =
+        let buffer = Array.zeroCreate<int64> capacity
+        let mutable head = 0
+        let mutable count = 0
+        member _.Add(value: int64) =
+            buffer[head] <- value
+            head <- (head + 1) % capacity
+            if count < capacity then count <- count + 1
+        member _.Average() : float =
+            if count = 0 then 0.0
+            else
+                let mutable sum = 0L
+                for i = 0 to count - 1 do
+                    sum <- sum + buffer[i]
+                float sum / float count
+        member _.Count = count
+
     /// Metrics collector that tracks request counts and durations.
     /// Keeps only the last 1000 durations per method to prevent memory leaks.
     type MetricsCollector(?maxDurationsPerMethod: int) =
         let maxDurations = defaultArg maxDurationsPerMethod 1000
         let requestCounts = System.Collections.Concurrent.ConcurrentDictionary<string, int ref>()
-        let durations = System.Collections.Concurrent.ConcurrentDictionary<string, ResizeArray<int64>>()
+        let durations = System.Collections.Concurrent.ConcurrentDictionary<string, RingBuffer>()
 
         /// Get request count per method.
         member _.RequestCounts =
             requestCounts |> Seq.map (fun kv -> kv.Key, kv.Value.Value) |> Map.ofSeq
 
         /// Get average duration per method in ms.
+        /// Best-effort snapshot. Concurrent recording may yield mildly stale arithmetic;
+        /// do not rely on exact values for billing or SLO calculations.
         member _.AverageDurations =
             durations
-            |> Seq.map (fun kv ->
-                let avg = if kv.Value.Count > 0 then kv.Value |> Seq.averageBy float else 0.0
-                kv.Key, avg)
+            |> Seq.map (fun kv -> kv.Key, lock kv.Value (fun () -> kv.Value.Average()))
             |> Map.ofSeq
 
         /// Create a middleware that records to this collector.
@@ -67,14 +84,19 @@ module Telemetry =
                 let sw = Stopwatch.StartNew()
                 let! response = next ctx
                 sw.Stop()
-                let durs = durations.GetOrAdd(ctx.Method, fun _ -> ResizeArray<int64>())
-                lock durs (fun () ->
-                    if durs.Count >= maxDurations then durs.RemoveAt(0)
-                    durs.Add(sw.ElapsedMilliseconds))
+                let durs = durations.GetOrAdd(ctx.Method, fun _ -> RingBuffer(maxDurations))
+                lock durs (fun () -> durs.Add(sw.ElapsedMilliseconds))
                 return response
             }
 
-    /// Combined tracing + metering middleware.
-    let all () : McpMiddleware =
+    /// Combined tracing + metering middleware, also returning the collector for inspection.
+    let allWithCollector () : MetricsCollector * McpMiddleware =
         let collector = MetricsCollector()
-        Middleware.compose (tracing()) collector.Middleware
+        collector, Middleware.compose (tracing()) collector.Middleware
+
+    /// Combined tracing + metering middleware. Source-compatible 1.0.x shim;
+    /// prefer allWithCollector for new code, which also returns the collector
+    /// so RequestCounts/AverageDurations can be inspected.
+    [<System.Obsolete("Use allWithCollector if you need access to the MetricsCollector for inspection.")>]
+    let all () : McpMiddleware =
+        allWithCollector () |> snd

@@ -33,11 +33,45 @@ module HttpServer =
             let mcpBuilder = builder.Services.AddMcpServer()
             mcpBuilder.WithHttpTransport() |> ignore
 
-            // Register tools using the same bridge as stdio
-            // We need the internal registerAll from FsMcp.Server
-            FsMcp.Server.Server.registerAllInternal mcpBuilder config
+            FsMcp.Server.Server.registerAllInternal mcpBuilder config |> ignore
 
-            let app = builder.Build()
+            use app = builder.Build()
+            let route = endpoint |> Option.defaultValue "/"
+            app.MapMcp(route) |> ignore
+            app.Urls.Add(url)
+            do! app.RunAsync()
+        }
+
+    /// Run the MCP server over HTTP and expose the subscription registry.
+    /// The onRegistry callback fires once, before the HTTP host starts, with the
+    /// registry (or None when there are no resources).
+    ///
+    /// Capture the registry in the caller (typically a mutable cell) so tool
+    /// handlers or external triggers can call ResourceSubscriptions.notifyChanged
+    /// after the host starts running:
+    ///
+    ///     let mutable registry = None
+    ///     do! HttpServer.runWithSubscriptions config (Some "/mcp") "http://localhost:8080" (fun r ->
+    ///         registry <- r
+    ///         Task.FromResult(()))
+    let runWithSubscriptions
+        (config: ServerConfig)
+        (endpoint: string option)
+        (url: string)
+        (onRegistry: FsMcp.Server.ResourceSubscriptionRegistry option -> Task<unit>)
+        : Task<unit> =
+        task {
+            let builder = WebApplication.CreateBuilder()
+            builder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
+
+            let mcpBuilder = builder.Services.AddMcpServer()
+            mcpBuilder.WithHttpTransport() |> ignore
+
+            let registry = FsMcp.Server.Server.registerAllInternal mcpBuilder config
+
+            do! onRegistry registry
+
+            use app = builder.Build()
             let route = endpoint |> Option.defaultValue "/"
             app.MapMcp(route) |> ignore
             app.Urls.Add(url)

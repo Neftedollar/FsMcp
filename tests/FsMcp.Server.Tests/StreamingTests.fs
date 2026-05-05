@@ -43,6 +43,27 @@ let asyncEnumerableWithError (items: 'T list) (error: exn) : IAsyncEnumerable<'T
                     else raise error
                 member _.DisposeAsync() = ValueTask.CompletedTask } }
 
+/// Create an IAsyncEnumerable that throws on second MoveNextAsync and tracks DisposeAsync calls.
+let asyncEnumerableWithTrackedDispose
+    (items: 'T list)
+    (error: exn)
+    (disposed: bool ref)
+    : IAsyncEnumerable<'T> =
+    { new IAsyncEnumerable<'T> with
+        member _.GetAsyncEnumerator(_ct) =
+            let mutable index = -1
+            { new IAsyncEnumerator<'T> with
+                member _.Current =
+                    if index >= 0 && index < items.Length then items.[index]
+                    else Unchecked.defaultof<'T>
+                member _.MoveNextAsync() =
+                    index <- index + 1
+                    if index < items.Length then ValueTask<bool>(true)
+                    else raise error
+                member _.DisposeAsync() =
+                    disposed.Value <- true
+                    ValueTask.CompletedTask } }
+
 // ───────── Typed args ─────────
 
 type CountArgs = { count: int }
@@ -155,6 +176,28 @@ let streamingTests =
                 let result =
                     StreamingTool.defineTyped<CountArgs> "" "d" (fun _ -> asyncEnumerable [])
                 Expect.isError result "empty name"
+        ]
+
+        testList "collectAsync error-path dispose" [
+            testCase "collectAsync awaits enumerator dispose even when MoveNextAsync throws" <| fun _ ->
+                // Track that DisposeAsync is called even after MoveNextAsync throws
+                let disposed = ref false
+                let err = System.InvalidOperationException("boom from MoveNext")
+                // The enumerable yields one item then throws on second MoveNextAsync
+                let enumerable = asyncEnumerableWithTrackedDispose [ Content.text "before" ] err disposed
+
+                // StreamingTool.define wraps collectAsync; the exception surfaces as HandlerException
+                let td =
+                    StreamingTool.define "throw-on-next" "Throws" (fun _args -> enumerable)
+                    |> unwrap
+                let result = td.Handler Map.empty |> Async.AwaitTask |> Async.RunSynchronously
+                // The exception must propagate
+                match result with
+                | Error (HandlerException ex) ->
+                    Expect.equal ex.Message "boom from MoveNext" "exception propagated"
+                | other -> failtest $"expected HandlerException, got: %A{other}"
+                // DisposeAsync MUST have been awaited
+                Expect.isTrue disposed.Value "DisposeAsync was called after exception"
         ]
 
         testList "mcpServer CE integration" [
