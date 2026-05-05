@@ -10,6 +10,7 @@
     <InternalsVisibleTo Include="FsMcp.Sampling" />
     <InternalsVisibleTo Include="FsMcp.Server.Tests" />
     <InternalsVisibleTo Include="FsMcp.Server.Http" />
+    <InternalsVisibleTo Include="FsMcp.Server.Http.Tests" />
   </ItemGroup>
 
   <ItemGroup>
