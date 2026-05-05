@@ -40,5 +40,11 @@ module DynamicServer =
     /// Get current tool count.
     let toolCount (server: DynamicServerConfig) = List.length server.Config.Tools
 
+    /// Subscribe to tool list changes. Returns an IDisposable; caller must dispose
+    /// when the subscriber's owner goes out of scope to avoid event-handler retention.
+    let subscribeToolsChanged (handler: unit -> unit) (server: DynamicServerConfig) : System.IDisposable =
+        server.OnToolsChanged.Publish |> Observable.subscribe (fun () -> handler ())
+
     /// Subscribe to tool list changes.
+    [<System.Obsolete("Use subscribeToolsChanged for a disposable subscription. The IEvent.Add returned by this function does not support unsubscription.")>]
     let onToolsChanged (server: DynamicServerConfig) = server.OnToolsChanged.Publish
