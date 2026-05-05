@@ -27,7 +27,9 @@ module Server =
         let schema =
             match td.InputSchema with
             | Some s -> s
-            | None -> JsonDocument.Parse("""{"type":"object","properties":{}}""").RootElement.Clone()
+            | None ->
+                use doc = JsonDocument.Parse("""{"type":"object","properties":{}}""")
+                doc.RootElement.Clone()
 
         override _.Name = ToolName.value td.Name
         override _.Description = td.Description
@@ -174,7 +176,8 @@ module Server =
             mcpBuilder.WithStdioServerTransport() |> ignore
             registerAllInternal mcpBuilder config
 
-            do! hostBuilder.Build().RunAsync()
+            use host = hostBuilder.Build()
+            do! host.RunAsync()
         }
 
     /// Run the MCP server over stdio as an Async computation.

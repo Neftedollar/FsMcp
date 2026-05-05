@@ -15,20 +15,22 @@ type StreamingToolHandler = Map<string, JsonElement> -> IAsyncEnumerable<Content
 module StreamingTool =
 
     /// Collect all items from an IAsyncEnumerable into a list.
-    let private collectAsync (enumerable: IAsyncEnumerable<'T>) = task {
-        let e = enumerable.GetAsyncEnumerator(CancellationToken.None)
+    let private collectAsync (ct: CancellationToken) (enumerable: IAsyncEnumerable<'T>) = task {
+        let e = enumerable.GetAsyncEnumerator(ct)
+        let acc = ResizeArray<'T>()
+        let mutable error : exn option = None
         try
-            let mutable acc = []
             let mutable hasNext = true
             while hasNext do
                 let! next = e.MoveNextAsync()
-                if next then
-                    acc <- e.Current :: acc
-                else
-                    hasNext <- false
-            return List.rev acc
-        finally
-            e.DisposeAsync().AsTask().Wait()
+                if next then acc.Add(e.Current)
+                else hasNext <- false
+        with ex ->
+            error <- Some ex
+        do! e.DisposeAsync()
+        match error with
+        | Some ex -> return raise ex
+        | None -> return List.ofSeq acc
     }
 
     /// Define a tool with a streaming handler.
@@ -41,7 +43,7 @@ module StreamingTool =
         : Result<ToolDefinition, ValidationError> =
         let wrappedHandler (args: Map<string, JsonElement>) = task {
             try
-                let! items = collectAsync (handler args)
+                let! items = collectAsync CancellationToken.None (handler args)
                 return Ok items
             with ex ->
                 return Error (HandlerException ex)
@@ -65,7 +67,7 @@ module StreamingTool =
                     jsonObj.[kv.Key] <- JsonNode.Parse(kv.Value.GetRawText())
                 let json = jsonObj.ToJsonString()
                 let typedArgs = JsonSerializer.Deserialize<'TArgs>(json, deserializerOptions)
-                let! items = collectAsync (handler typedArgs)
+                let! items = collectAsync CancellationToken.None (handler typedArgs)
                 return Ok items
             with ex ->
                 return Error (HandlerException ex)
