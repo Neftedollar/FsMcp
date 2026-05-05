@@ -152,11 +152,11 @@ let telemetryMetricsTests =
     ]
 
 [<Tests>]
-let telemetryAllTests =
-    testList "Telemetry.all" [
+let telemetryAllWithCollectorTests =
+    testList "Telemetry.allWithCollector" [
         testCase "creates combined tracing+metering middleware" <| fun _ ->
             withActivityListener "test/all-combined" (fun captured ->
-                let mw = Telemetry.all ()
+                let collector, mw = Telemetry.allWithCollector ()
                 let ctx = mkContext "test/all-combined"
                 let result = mw ctx okHandler |> Async.AwaitTask |> Async.RunSynchronously
                 match result with
@@ -167,5 +167,10 @@ let telemetryAllTests =
                 let activity = captured[0]
                 let status = activity.GetTagItem("mcp.status") :?> string
                 Expect.equal status "ok" "tracing should set ok status"
+                // Collector should have observed the request (A1 test requirement)
+                let counts = collector.RequestCounts
+                Expect.isTrue (Map.containsKey "test/all-combined" counts) "collector has method"
+                let avgs = collector.AverageDurations
+                Expect.isTrue (Map.containsKey "test/all-combined" avgs) "AverageDurations is non-empty"
             )
     ]

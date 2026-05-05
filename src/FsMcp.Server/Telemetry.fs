@@ -40,7 +40,7 @@ module Telemetry =
                 return McpResponseError (HandlerException ex)
         }
 
-    type private RingBuffer(capacity: int) =
+    type internal RingBuffer(capacity: int) =
         let buffer = Array.zeroCreate<int64> capacity
         let mutable head = 0
         let mutable count = 0
@@ -69,9 +69,11 @@ module Telemetry =
             requestCounts |> Seq.map (fun kv -> kv.Key, kv.Value.Value) |> Map.ofSeq
 
         /// Get average duration per method in ms.
+        /// Best-effort snapshot. Concurrent recording may yield mildly stale arithmetic;
+        /// do not rely on exact values for billing or SLO calculations.
         member _.AverageDurations =
             durations
-            |> Seq.map (fun kv -> kv.Key, kv.Value.Average())
+            |> Seq.map (fun kv -> kv.Key, lock kv.Value (fun () -> kv.Value.Average()))
             |> Map.ofSeq
 
         /// Create a middleware that records to this collector.
@@ -92,5 +94,9 @@ module Telemetry =
         let collector = MetricsCollector()
         collector, Middleware.compose (tracing()) collector.Middleware
 
-    /// Combined tracing + metering middleware.
-    let all () : McpMiddleware = allWithCollector () |> snd
+    /// Combined tracing + metering middleware. Source-compatible 1.0.x shim;
+    /// prefer allWithCollector for new code, which also returns the collector
+    /// so RequestCounts/AverageDurations can be inspected.
+    [<System.Obsolete("Use allWithCollector if you need access to the MetricsCollector for inspection.")>]
+    let all () : McpMiddleware =
+        allWithCollector () |> snd
