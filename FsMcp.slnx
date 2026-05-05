@@ -13,6 +13,7 @@
     <Project Path="tests/FsMcp.Core.Tests/FsMcp.Core.Tests.fsproj" />
     <Project Path="tests/FsMcp.Sampling.Tests/FsMcp.Sampling.Tests.fsproj" />
     <Project Path="tests/FsMcp.Server.Tests/FsMcp.Server.Tests.fsproj" />
+    <Project Path="tests/FsMcp.Server.Http.Tests/FsMcp.Server.Http.Tests.fsproj" />
     <Project Path="tests/FsMcp.TaskApi.Tests/FsMcp.TaskApi.Tests.fsproj" />
     <Project Path="tests/FsMcp.Testing.Tests/FsMcp.Testing.Tests.fsproj" />
   </Folder>
