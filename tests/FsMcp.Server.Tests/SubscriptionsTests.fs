@@ -66,14 +66,18 @@ let subscriptionsTests =
             Expect.notEqual id1 id2 "different SubscriptionIds"
             Expect.equal reg.Subscribers.Count 2 "two entries"
 
-        // B5: parallel fan-out timing test
+        // B5: parallel fan-out test
+        // Contract: all sessions are dispatched concurrently, not serially.
+        // We verify this by recording the start timestamp of each callback and asserting
+        // that all three started within a small window — proving simultaneous dispatch.
+        // This avoids asserting total wall-clock time, which is brittle on slow CI runners
+        // (e.g. Windows with cold ThreadPool can add 700-900ms before the first task fires).
         testCase "notifyChanged dispatches in parallel" <| fun _ ->
             let reg = ResourceSubscriptions.create ()
             let uri = mkUri "https://example.com/resource"
 
-            // Record start/finish for each notify call
+            // Record start timestamps for each notify call (before the delay)
             let callStarts = System.Collections.Concurrent.ConcurrentBag<DateTimeOffset>()
-            let callFinishes = System.Collections.Concurrent.ConcurrentBag<DateTimeOffset>()
 
             // We can't easily inject into notifyChanged's internal SessionServers
             // (it uses McpServer directly), so we test the parallel contract directly
@@ -84,15 +88,18 @@ let subscriptionsTests =
                 task {
                     callStarts.Add(DateTimeOffset.UtcNow)
                     do! Task.Delay(100)
-                    callFinishes.Add(DateTimeOffset.UtcNow)
                 } :> Task
 
-            let sw = System.Diagnostics.Stopwatch.StartNew()
             let pendings = sessions |> List.map notifyForSession |> List.toArray
             Task.WhenAll(pendings) |> Async.AwaitTask |> Async.RunSynchronously
-            sw.Stop()
 
-            // If parallel: total time ≈ 100ms (one slot), not ≥ 300ms (three slots)
-            Expect.isLessThan sw.ElapsedMilliseconds 250L "parallel dispatch completes ~100ms not ~300ms"
             Expect.equal callStarts.Count 3 "all 3 sessions were notified"
+
+            // Parallel contract: all callbacks started within 150ms of each other.
+            // Serial dispatch would space them ≥100ms apart (start[1] - start[0] ≥ 100ms,
+            // start[2] - start[0] ≥ 200ms). A 150ms window is generous enough for any
+            // platform scheduler yet tight enough to rule out serial execution.
+            let starts = callStarts |> Seq.toArray |> Array.map _.ToUnixTimeMilliseconds()
+            let window = (Array.max starts) - (Array.min starts)
+            Expect.isLessThan window 150L "all callbacks started within 150ms — proves parallel dispatch, not serial"
     ]
