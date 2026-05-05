@@ -21,7 +21,7 @@ tests/                — Mirrored test projects for each library
 
 ```bash
 dotnet build          # build all projects
-dotnet test           # run 227 Expecto + FsCheck tests
+dotnet test           # run 320 Expecto + FsCheck tests
 ```
 
 ## Code Style

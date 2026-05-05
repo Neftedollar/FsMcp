@@ -47,5 +47,6 @@ let server = mcpServer {
 - [Client Guide](client-guide.html) — connect, call tools, error handling
 - [Testing Guide](testing-guide.html) — TestServer, assertions, property testing
 - [Advanced](advanced.html) — streaming, notifications, hot reload, sampling
+- [Runtime Tuning](runtime-tuning.html) — GC configuration, memory diagnostics for stdio servers
 - [Types Reference](types-reference.html) — all types and smart constructors
 - [API Reference](reference/index.html) — auto-generated from XML docs
