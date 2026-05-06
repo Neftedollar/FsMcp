@@ -7,6 +7,7 @@ open FsMcp.Core
 open FsMcp.Core.Validation
 
 /// A pre-built typed handler with its associated JSON schema.
+[<NoComparison; NoEquality>]
 type TypedHandlerInfo = {
     RawHandler: Map<string, JsonElement> -> Task<Result<Content list, McpError>>
     Schema: JsonElement
@@ -32,6 +33,7 @@ module TypedHandler =
         { RawHandler = rawHandler; Schema = schema }
 
 /// State accumulated during mcpTool CE execution.
+[<NoComparison; NoEquality>]
 type ToolBuilderState = {
     Name: string option
     Description: string option

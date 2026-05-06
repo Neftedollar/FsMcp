@@ -8,6 +8,7 @@ open FsMcp.Core.Validation
 type SampleFunc = SamplingRequest -> Task<Result<SamplingResult, SamplingError>>
 
 /// Context for tool handlers that can invoke sampling.
+[<NoComparison; NoEquality>]
 type SamplingContext = {
     /// Send a sampling request to the client's LLM.
     Sample: SampleFunc

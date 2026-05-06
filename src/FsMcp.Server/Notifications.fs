@@ -31,6 +31,7 @@ module Notifications =
     }
 
     /// A handler context that includes notification capabilities.
+    [<NoComparison; NoEquality>]
     type HandlerContext = {
         /// Send a progress notification to the client.
         ReportProgress: ProgressUpdate -> Task<unit>
@@ -55,6 +56,7 @@ module Notifications =
 
     /// A contextual tool definition that captures its context-aware handler
     /// in a closure (no global registry — test-safe).
+    [<NoComparison; NoEquality>]
     type ContextualToolHandle = {
         /// The ToolDefinition for registration with the server.
         Definition: ToolDefinition

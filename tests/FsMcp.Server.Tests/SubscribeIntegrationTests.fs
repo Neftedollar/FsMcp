@@ -77,6 +77,7 @@ type GatedWriteStream(inner: Stream, writeDelay: TimeSpan) =
 //  Shared helper: build one server + client stack
 // ─────────────────────────────────────────────────────────────────────────────
 
+[<NoComparison; NoEquality>]
 type ServerStack = {
     Services: ServiceProvider
     HostedServices: IHostedService list

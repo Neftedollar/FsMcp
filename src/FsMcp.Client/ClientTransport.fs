@@ -1,6 +1,7 @@
 namespace FsMcp.Client
 
 /// Transport configuration for connecting to MCP servers.
+[<NoComparison>]
 type ClientTransport =
     | StdioProcess of command: string * args: string list
     | HttpEndpoint of uri: System.Uri * headers: Map<string, string>
