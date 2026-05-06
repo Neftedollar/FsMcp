@@ -44,7 +44,7 @@ dotnet add package FsMcp.Sampling   # LLM sampling from server tools
 - **`Result<'T, McpError>`** — no exceptions in expected paths, typed errors everywhere
 - **Smart constructors** — `ToolName.create` validates at construction, not at runtime
 - **Composable middleware** — logging, validation, telemetry via `Middleware.pipeline`
-- **320 tests** — Expecto + FsCheck property tests on every domain type
+- **322 tests** — Expecto + FsCheck property tests on every domain type
 
 ## Quick Start
 
@@ -176,7 +176,7 @@ result |> Expect.mcpHasTextContent "30" "addition works"
 
 ```bash
 dotnet build       # 7 packages
-dotnet test        # 320 tests (Expecto + FsCheck)
+dotnet test        # 322 tests (Expecto + FsCheck)
 ```
 
 ## Runtime tuning for stdio servers
