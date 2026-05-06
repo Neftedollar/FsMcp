@@ -39,7 +39,7 @@ let dynamicServerTests =
             let config = mkConfig []
             let dyn = DynamicServer.create config
             let mutable fired = false
-            (DynamicServer.onToolsChanged dyn).Add(fun () -> fired <- true)
+            DynamicServer.subscribeToolsChanged (fun () -> fired <- true) dyn |> ignore
             let tool = mkTool "new-tool"
             DynamicServer.addTool tool dyn
             Expect.equal (DynamicServer.toolCount dyn) 1 "one tool after add"
@@ -50,7 +50,7 @@ let dynamicServerTests =
             let config = mkConfig [ tool ]
             let dyn = DynamicServer.create config
             let mutable fired = false
-            (DynamicServer.onToolsChanged dyn).Add(fun () -> fired <- true)
+            DynamicServer.subscribeToolsChanged (fun () -> fired <- true) dyn |> ignore
             let tn = ToolName.create "removeme" |> unwrap
             DynamicServer.removeTool tn dyn
             Expect.equal (DynamicServer.toolCount dyn) 0 "zero tools after remove"
@@ -80,10 +80,21 @@ let dynamicServerTests =
             let config = mkConfig []
             let dyn = DynamicServer.create config
             let mutable count = 0
-            (DynamicServer.onToolsChanged dyn).Add(fun () -> count <- count + 1)
+            DynamicServer.subscribeToolsChanged (fun () -> count <- count + 1) dyn |> ignore
             DynamicServer.addTool (mkTool "x") dyn
             DynamicServer.addTool (mkTool "y") dyn
             let tn = ToolName.create "x" |> unwrap
             DynamicServer.removeTool tn dyn
             Expect.equal count 3 "event fired three times"
+
+        testCase "subscribeToolsChanged stops delivering after dispose" <| fun _ ->
+            let config = mkConfig []
+            let dyn = DynamicServer.create config
+            let mutable count = 0
+            let subscription = DynamicServer.subscribeToolsChanged (fun () -> count <- count + 1) dyn
+            DynamicServer.addTool (mkTool "p") dyn
+            Expect.equal count 1 "handler called once before dispose"
+            subscription.Dispose()
+            DynamicServer.addTool (mkTool "q") dyn
+            Expect.equal count 1 "handler not called after dispose"
     ]
