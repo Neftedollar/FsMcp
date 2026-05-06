@@ -25,11 +25,13 @@ DOTNET_gcServer=0
 
 Workstation GC uses a single heap regardless of CPU count, and — unlike Server GC — it is designed to return unused committed memory to the OS promptly when the application is idle. For a stdio MCP server, which is mostly idle between tool calls, this is the right default. The throughput penalty is invisible at low request rates.
 
-### `DOTNET_GCHeapHardLimitPercent=10` — Cap committed heap at a fraction of system RAM
+### `DOTNET_GCHeapHardLimitPercent` — Cap committed heap at a fraction of system RAM
 
 ```bash
-DOTNET_GCHeapHardLimitPercent=10
+DOTNET_GCHeapHardLimitPercent=0xA
 ```
+
+Note: The .NET runtime parses this env-var value as hexadecimal — `0xA` means 10%, `0x14` means 20%. Writing the bare number `10` would actually mean 16%. See [Microsoft Learn: Garbage collector — Heap limit](https://learn.microsoft.com/dotnet/core/runtime-config/garbage-collector#heap-limit) for the full reference.
 
 This limits the managed heap to 10% of physical RAM. It works with both Server GC and Workstation GC. On a 32 GB machine, the cap is ~3.2 GB. The runtime triggers a full GC instead of committing beyond the limit, which prevents unbounded RSS growth while keeping Server GC semantics if you prefer them.
 
@@ -125,8 +127,10 @@ Look at the `VM_ALLOCATE` line (the managed heap), the `MALLOC_*` lines (native 
 On macOS:
 
 ```bash
-memory_pressure -l critical -s 60
+memory_pressure -S -l critical -s 60
 ```
+
+Note: `-S` (uppercase) puts the system into simulated memory pressure for the duration specified by `-s` without allocating real physical RAM. Without `-S`, the same flags apply real pressure by allocating memory until the system hits the critical watermark, which is invasive and not what you want for a diagnostic test.
 
 Or simply open a memory-heavy application (a browser with many tabs, a VM, Xcode). If the target process's RSS drops by hundreds of megabytes within a minute **without a restart**, the memory was committed-but-not-retained managed heap. Server GC returned it the moment the OS asked. That is not a leak.
 

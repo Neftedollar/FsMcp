@@ -113,16 +113,20 @@ diff_snapshots() {
     echo "Could not find ps snapshots for '$a' or '$b' in $LEAK_DIR"
     exit 1
   fi
+  local tmp_a tmp_b
+  tmp_a=$(mktemp)
+  tmp_b=$(mktemp)
+  trap 'rm -f "$tmp_a" "$tmp_b"' RETURN
   echo "=== $a -> $b ==="
   awk -v which=A 'NR==2 {printf "%s rss=%.1fMB vsz=%.1fMB cpu=%s etime=%s\n", which, $2/1024, $3/1024, $4, $5}' "$fa"
   awk -v which=B 'NR==2 {printf "%s rss=%.1fMB vsz=%.1fMB cpu=%s etime=%s\n", which, $2/1024, $3/1024, $4, $5}' "$fb"
-  awk 'NR==2 {a_rss=$2; a_vsz=$3} END {print "rss_kb_A="a_rss; print "vsz_kb_A="a_vsz}' "$fa" > /tmp/leak-diff-a
-  awk 'NR==2 {b_rss=$2; b_vsz=$3} END {print "rss_kb_B="b_rss; print "vsz_kb_B="b_vsz}' "$fb" > /tmp/leak-diff-b
+  awk 'NR==2 {a_rss=$2; a_vsz=$3} END {print "rss_kb_A="a_rss; print "vsz_kb_A="a_vsz}' "$fa" > "$tmp_a"
+  awk 'NR==2 {b_rss=$2; b_vsz=$3} END {print "rss_kb_B="b_rss; print "vsz_kb_B="b_vsz}' "$fb" > "$tmp_b"
   local arss brss avsz bvsz
-  arss=$(awk -F= '/rss/{print $2}' /tmp/leak-diff-a)
-  brss=$(awk -F= '/rss/{print $2}' /tmp/leak-diff-b)
-  avsz=$(awk -F= '/vsz/{print $2}' /tmp/leak-diff-a)
-  bvsz=$(awk -F= '/vsz/{print $2}' /tmp/leak-diff-b)
+  arss=$(awk -F= '/rss/{print $2}' "$tmp_a")
+  brss=$(awk -F= '/rss/{print $2}' "$tmp_b")
+  avsz=$(awk -F= '/vsz/{print $2}' "$tmp_a")
+  bvsz=$(awk -F= '/vsz/{print $2}' "$tmp_b")
   awk -v a="$arss" -v b="$brss" -v av="$avsz" -v bv="$bvsz" 'BEGIN {
     printf "delta_rss=%+0.1fMB  delta_vsz=%+0.1fMB\n", (b-a)/1024, (bv-av)/1024
   }'
