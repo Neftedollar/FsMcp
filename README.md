@@ -44,7 +44,7 @@ dotnet add package FsMcp.Sampling   # LLM sampling from server tools
 - **`Result<'T, McpError>`** — no exceptions in expected paths, typed errors everywhere
 - **Smart constructors** — `ToolName.create` validates at construction, not at runtime
 - **Composable middleware** — logging, validation, telemetry via `Middleware.pipeline`
-- **306 tests** — Expecto + FsCheck property tests on every domain type
+- **320 tests** — Expecto + FsCheck property tests on every domain type
 
 ## Quick Start
 
@@ -176,8 +176,21 @@ result |> Expect.mcpHasTextContent "30" "addition works"
 
 ```bash
 dotnet build       # 7 packages
-dotnet test        # 306 tests (Expecto + FsCheck)
+dotnet test        # 320 tests (Expecto + FsCheck)
 ```
+
+## Runtime tuning for stdio servers
+
+By default .NET runs the Server GC, which is throughput-optimized and does not proactively return committed heap pages to the OS. For an idle stdio MCP server this can look like a memory leak — RSS grows during a session and stays elevated even when the server is quiet. The runtime releases the memory immediately once the OS signals memory pressure, confirming it was commit-grow, not a genuine leak.
+
+Set these environment variables to reduce idle RSS:
+
+```bash
+DOTNET_gcServer=0      # Workstation GC — returns memory at idle
+DOTNET_gcConcurrent=1  # Concurrent collection — shorter pauses
+```
+
+See [docs/runtime-tuning.md](docs/runtime-tuning.md) for the full explanation, MCP client config examples (Claude Code, Codex), a `runtimeconfig.template.json` snippet for redistributable tools, and a five-minute diagnostic recipe to distinguish commit-grow from an actual leak.
 
 ## Examples
 
