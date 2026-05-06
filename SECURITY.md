@@ -6,7 +6,7 @@ If you discover a security vulnerability in FsMcp, please report it responsibly.
 
 **Do NOT open a public issue.**
 
-Email: security@fsmcp.dev (or open a private security advisory on GitHub)
+Email: r.m.melikov@icloud.com (or open a private security advisory on GitHub)
 
 We will acknowledge within 48 hours and provide a fix timeline within 7 days.
 
@@ -14,4 +14,4 @@ We will acknowledge within 48 hours and provide a fix timeline within 7 days.
 
 | Version | Supported |
 |---------|-----------|
-| 1.0.x   | Yes       |
+| 1.x.y   | Yes       |
