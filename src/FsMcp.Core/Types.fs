@@ -38,6 +38,7 @@ type McpMessage = {
 }
 
 /// Errors that can occur in the FsMcp toolkit.
+[<NoComparison>]
 type McpError =
     | ValidationFailed of errors: ValidationError list
     | ToolNotFound of name: ToolName
@@ -48,6 +49,7 @@ type McpError =
     | ProtocolError of code: int * message: string
 
 /// A tool definition with a name, description, optional input schema, and handler.
+[<NoComparison; NoEquality>]
 type ToolDefinition = {
     Name: ToolName
     Description: string
@@ -56,6 +58,7 @@ type ToolDefinition = {
 }
 
 /// A resource definition with a URI, name, description, MIME type, and handler.
+[<NoComparison; NoEquality>]
 type ResourceDefinition = {
     Uri: ResourceUri
     Name: string
@@ -72,6 +75,7 @@ type PromptArgument = {
 }
 
 /// A prompt definition with a name, description, argument list, and handler.
+[<NoComparison; NoEquality>]
 type PromptDefinition = {
     Name: PromptName
     Description: string option

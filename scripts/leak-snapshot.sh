@@ -28,10 +28,6 @@ COUNTERS_BIN="${COUNTERS_BIN:-$HOME/.dotnet/tools/dotnet-counters}"
 
 mkdir -p "$LEAK_DIR"
 
-find_pid() {
-  pgrep -f "$PROC_PATTERN" | head -1 || true
-}
-
 snapshot_one() {
   local label="$1"
   local pattern="$2"

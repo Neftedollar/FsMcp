@@ -4,6 +4,7 @@ open FsMcp.Core
 open FsMcp.Core.Validation
 
 /// A mutable server configuration that supports adding/removing tools at runtime.
+[<NoComparison; NoEquality>]
 type DynamicServerConfig = {
     mutable Config: ServerConfig
     OnToolsChanged: Event<unit>

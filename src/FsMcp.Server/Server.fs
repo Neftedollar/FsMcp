@@ -13,18 +13,19 @@ type McpMiddleware =
     McpContext -> (McpContext -> System.Threading.Tasks.Task<McpResponse>) -> System.Threading.Tasks.Task<McpResponse>
 
 /// Context available to middleware.
-and McpContext = {
+and [<NoComparison>] McpContext = {
     Method: string
     Params: System.Text.Json.JsonElement option
     CancellationToken: System.Threading.CancellationToken
 }
 
 /// Response from middleware pipeline.
-and McpResponse =
+and [<NoComparison>] McpResponse =
     | Success of System.Text.Json.JsonElement
     | McpResponseError of McpError
 
 /// Complete server configuration built by the CE.
+[<NoComparison; NoEquality>]
 type ServerConfig = {
     Name: ServerName
     Version: ServerVersion
@@ -63,6 +64,7 @@ module ServerConfig =
                 | None -> Ok config
 
 /// Builder state accumulated during CE execution.
+[<NoComparison; NoEquality>]
 type ServerBuilderState = {
     Name: ServerName option
     Version: ServerVersion option

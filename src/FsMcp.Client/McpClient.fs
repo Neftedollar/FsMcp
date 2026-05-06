@@ -27,6 +27,7 @@ type PromptInfo = {
 }
 
 /// Client configuration.
+[<NoComparison>]
 type ClientConfig = {
     Transport: ClientTransport
     Name: string
@@ -34,6 +35,7 @@ type ClientConfig = {
 }
 
 /// Wrapper around the C# SDK's McpClient.
+[<NoComparison>]
 type McpClient = internal {
     Client: ModelContextProtocol.Client.McpClient
 }

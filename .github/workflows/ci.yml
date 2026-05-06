@@ -28,7 +28,15 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test --no-build --configuration Release --verbosity normal
+        run: dotnet test --no-build --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-cobertura
+          path: '**/coverage.cobertura.xml'
+          if-no-files-found: error
 
       - name: Pack
         if: matrix.os == 'ubuntu-latest'

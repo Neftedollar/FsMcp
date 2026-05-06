@@ -25,6 +25,7 @@ type SubscriptionEntry = {
 /// Per-session server reference, used to send notifications.
 /// SDK 1.2.0 does not expose a session-disconnect hook.
 /// MUST be called on disconnect; see unsubscribeAllForSession.
+[<NoComparison; NoEquality>]
 type ResourceSubscriptionRegistry = {
     /// All active subscriptions, keyed by SubscriptionId.
     Subscribers: ConcurrentDictionary<SubscriptionId, SubscriptionEntry>

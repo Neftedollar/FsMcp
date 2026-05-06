@@ -141,8 +141,11 @@ let httpSubscriptionDisconnectTests =
                             null,
                             cts.Token)
 
-                    // Allow subscribe message to be processed server-side
-                    do! Task.Delay(400)
+                    // Wait until subscribe message has been processed server-side.
+                    let! subscribed =
+                        waitUntilMs 5000 (fun () ->
+                            registry.Subscribers.Count > 0 && registry.SessionServers.Count > 0)
+                    Expect.isTrue subscribed "server-side subscribe is visible in registry within 5 s"
 
                     // ── Assert pre-disconnect ─────────────────────────────────
                     Expect.isTrue (registry.Subscribers.Count > 0) "registry has subscriber after subscribe"
