@@ -3,6 +3,23 @@
 All notable changes to FsMcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.2] - 2026-08-02
+
+### Fixed
+
+- **Windows startup crash in 1.2.0 and 1.2.1.** The stderr sink introduced in 1.2.0
+  opened file descriptor 2 directly to bypass `ConsolePal`'s shared console monitor.
+  Descriptor numbers are a Unix concept — on Windows handles are opaque, and
+  `SafeFileHandle(nativeint 2)` throws `The handle is invalid` while constructing the
+  logger provider. Any Windows host running an FsMcp server with console logging
+  enabled (the default) failed at startup.
+
+  The sink is now platform-aware: descriptor 2 on Unix, `Console.OpenStandardError()`
+  on Windows. The bypass is only needed on Unix in the first place —
+  `ConsolePal.Windows` does not take the process-wide monitor that causes the wedge.
+
+  **Windows users on 1.2.0 or 1.2.1 must upgrade.** Unix users are unaffected.
+
 ## [1.2.1] - 2026-08-02
 
 ### Fixed

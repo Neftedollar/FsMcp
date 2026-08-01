@@ -64,15 +64,25 @@ type NonBlockingStderrLoggerProvider(minLevel: LogLevel, capacity: int) =
                 SingleReader = true,
                 SingleWriter = false))
 
-    /// File descriptor 2 opened directly, deliberately NOT Console.OpenStandardError().
-    /// A ConsoleStream would route every write through ConsolePal's process-wide
-    /// console monitor, and a stalled write there takes stdout down with it.
-    /// ownsHandle is false: disposing this stream must not close the host's stderr.
-    let stderr =
-        new FileStream(
-            new SafeFileHandle(nativeint 2, ownsHandle = false),
-            FileAccess.Write,
-            bufferSize = 4096)
+    /// The stderr sink.
+    ///
+    /// On Unix this is file descriptor 2 opened directly, deliberately NOT
+    /// Console.OpenStandardError(): a ConsoleStream routes every write through
+    /// ConsolePal's process-wide console monitor, and a write stalled on a full pipe
+    /// takes stdout down with it. ownsHandle is false — disposing this stream must
+    /// not close the host's stderr.
+    ///
+    /// On Windows the raw descriptor number is meaningless (handles are opaque, and
+    /// `nativeint 2` throws "The handle is invalid"), and ConsolePal.Windows does not
+    /// share that monitor, so the standard stream is both correct and safe there.
+    let stderr : Stream =
+        if OperatingSystem.IsWindows() then
+            Console.OpenStandardError()
+        else
+            new FileStream(
+                new SafeFileHandle(nativeint 2, ownsHandle = false),
+                FileAccess.Write,
+                bufferSize = 4096)
 
     // Owns the descriptor for the lifetime of the provider. A dedicated thread, not
     // a ThreadPool work item: writing to a full pipe blocks, and a blocked pool
