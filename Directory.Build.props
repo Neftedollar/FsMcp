@@ -7,7 +7,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>fsharp;mcp;model-context-protocol;ai;llm;tools</PackageTags>
     <Copyright>Copyright (c) FsMcp Contributors</Copyright>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningLevel>5</WarningLevel>
@@ -17,6 +17,23 @@
 
   <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)README.md') AND '$(IsPackable)' != 'false'">
     <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- Pin the FSharp.Core floor that ships in our .nuspec.
+       Without this we inherit whatever implicit FSharp.Core the building SDK happens
+       to contribute, so the published dependency drifts with the CI runner's SDK.
+       1.2.0 shipped a >= 10.1.302 floor that way, which forced every consumer to
+       upgrade — and broke consumers pinned to FSharp.Compiler.Service 43.12.203,
+       which requires exactly 10.1.203.
+
+       The implicit reference has to be disabled rather than Updated: this file is
+       imported before the F# targets that add it, so an Update here has nothing to
+       act on and the SDK version silently wins. -->
+  <PropertyGroup>
+    <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" Version="10.1.203" />
   </ItemGroup>
 
   <ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">

@@ -3,6 +3,25 @@
 All notable changes to FsMcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.1] - 2026-08-02
+
+### Fixed
+
+- **Pinned the `FSharp.Core` floor we publish.** The projects relied on the SDK's
+  implicit `FSharp.Core` reference, so the dependency written into our `.nuspec`
+  drifted with whatever SDK built the release. 1.2.0 shipped a `>= 10.1.302` floor
+  that way — an upgrade no consumer asked for, and a hard break for anyone pinned to
+  `FSharp.Compiler.Service` 43.12.203, which requires exactly `10.1.203`. The floor
+  is now declared explicitly at `10.1.203`, matching 1.1.1.
+
+  Consumers on 1.2.0 that hit `NU1605` / `NU1608` around `FSharp.Core` should move to
+  1.2.1; no source changes are needed.
+
+  Note that `DisableImplicitFSharpCoreReference` is required here. `Directory.Build.props`
+  is imported before the F# targets that add the implicit reference, so a
+  `PackageReference Update` in that file has nothing to act on and the SDK version
+  silently wins — verified by inspecting the produced `.nuspec`.
+
 ## [1.2.0] - 2026-08-02
 
 ### Fixed
