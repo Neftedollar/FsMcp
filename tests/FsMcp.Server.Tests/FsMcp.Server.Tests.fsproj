@@ -25,6 +25,7 @@
     <Compile Include="TelemetryTests.fs" />
     <Compile Include="SubscriptionsTests.fs" />
     <Compile Include="SubscribeIntegrationTests.fs" />
+    <Compile Include="StderrLoggerTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

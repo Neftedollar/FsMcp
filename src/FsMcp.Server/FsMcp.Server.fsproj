@@ -25,6 +25,7 @@
     <Compile Include="ValidationMiddleware.fs" />
     <Compile Include="Telemetry.fs" />
     <Compile Include="Subscriptions.fs" />
+    <Compile Include="StderrLogger.fs" />
     <Compile Include="Transport.fs" />
   </ItemGroup>
 

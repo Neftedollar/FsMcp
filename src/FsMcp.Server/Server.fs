@@ -34,6 +34,10 @@ type ServerConfig = {
     Prompts: PromptDefinition list
     Middleware: McpMiddleware list
     Transport: Transport
+    /// Whether to attach the built-in console logger (writes to stderr).
+    /// Default true. Set false for stdio hosts that leave the child's stderr
+    /// unread — see the `consoleLogging` custom operation for the full rationale.
+    ConsoleLogging: bool
 }
 
 /// Validation of ServerConfig (uniqueness checks).
@@ -73,6 +77,7 @@ type ServerBuilderState = {
     Prompts: PromptDefinition list
     Middleware: McpMiddleware list
     Transport: Transport
+    ConsoleLogging: bool
 }
 
 module ServerBuilderState =
@@ -84,6 +89,7 @@ module ServerBuilderState =
         Prompts = []
         Middleware = []
         Transport = Stdio
+        ConsoleLogging = true
     }
 
 /// Exception raised when server configuration is invalid.
@@ -139,6 +145,17 @@ type McpServerBuilder() =
     member _.UseHttp(state: ServerBuilderState, endpoint: string option) =
         { state with Transport = Http endpoint }
 
+    /// Enable or disable the built-in console logger. Default true.
+    ///
+    /// The console logger writes to stderr. Over stdio, the host owns that pipe,
+    /// and a host that never drains it lets the pipe fill (64 KB on macOS/Linux).
+    /// The logger's queue then fills too, and the server keeps serving requests
+    /// but drops its own diagnostics. Set false when the host discards stderr
+    /// anyway, so no work is spent formatting messages nobody reads.
+    [<CustomOperation("consoleLogging")>]
+    member _.ConsoleLogging(state: ServerBuilderState, enabled: bool) =
+        { state with ConsoleLogging = enabled }
+
     member _.Run(state: ServerBuilderState) : ServerConfig =
         let name =
             state.Name
@@ -156,6 +173,7 @@ type McpServerBuilder() =
             Prompts = state.Prompts
             Middleware = state.Middleware
             Transport = state.Transport
+            ConsoleLogging = state.ConsoleLogging
         }
         match ServerConfig.validate config with
         | Ok c -> c

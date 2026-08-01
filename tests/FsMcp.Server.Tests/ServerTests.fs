@@ -122,6 +122,23 @@ let serverBuilderTests =
             | Stdio -> ()
             | other -> failtest $"expected Stdio, got %A{other}"
 
+        testCase "console logging is on by default" <| fun _ ->
+            let config = mcpServer {
+                name "Default"
+                version "1.0.0"
+                useStdio
+            }
+            Expect.isTrue config.ConsoleLogging "console logging should default to on"
+
+        testCase "consoleLogging false opts out" <| fun _ ->
+            let config = mcpServer {
+                name "Quiet"
+                version "1.0.0"
+                useStdio
+                consoleLogging false
+            }
+            Expect.isFalse config.ConsoleLogging "consoleLogging false should disable the console logger"
+
         testCase "ServerConfig.validate returns Ok for valid config" <| fun _ ->
             let config : ServerConfig = {
                 Name = ServerName.create "test" |> unwrap
@@ -131,6 +148,7 @@ let serverBuilderTests =
                 Prompts = []
                 Middleware = []
                 Transport = Stdio
+                ConsoleLogging = true
             }
             Expect.isOk (ServerConfig.validate config) "valid config"
 
@@ -143,6 +161,7 @@ let serverBuilderTests =
                 Prompts = []
                 Middleware = []
                 Transport = Stdio
+                ConsoleLogging = true
             }
             match ServerConfig.validate config with
             | Error (DuplicateEntry ("Tool", "dup")) -> ()

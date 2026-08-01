@@ -216,6 +216,23 @@ module Server =
             None
 
     // ────────────────────────────────────────────────
+    //  Logging
+    // ────────────────────────────────────────────────
+
+    /// Wire up logging for a stdio host, honouring config.ConsoleLogging.
+    ///
+    /// ClearProviders runs in both branches: CreateApplicationBuilder has already
+    /// registered the built-in console provider, and that provider deadlocks the
+    /// server whenever the host leaves the child's stderr unread. It must go even
+    /// when logging stays enabled — see StderrLogger.fs for the full analysis.
+    let private configureLogging (hostBuilder: HostApplicationBuilder) (config: ServerConfig) =
+        hostBuilder.Logging.ClearProviders() |> ignore
+        if config.ConsoleLogging then
+            hostBuilder.Logging.AddProvider(
+                new NonBlockingStderrLoggerProvider(LogLevel.Information)) |> ignore
+            hostBuilder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
+
+    // ────────────────────────────────────────────────
     //  Run (stdio)
     // ────────────────────────────────────────────────
 
@@ -223,9 +240,7 @@ module Server =
     let run (config: ServerConfig) : Task<unit> =
         task {
             let hostBuilder = Host.CreateApplicationBuilder()
-            hostBuilder.Logging.AddConsole(fun opts ->
-                opts.LogToStandardErrorThreshold <- LogLevel.Trace) |> ignore
-            hostBuilder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
+            configureLogging hostBuilder config
 
             let mcpBuilder = hostBuilder.Services.AddMcpServer()
             mcpBuilder.WithStdioServerTransport() |> ignore
@@ -254,9 +269,7 @@ module Server =
         : Task<unit> =
         task {
             let hostBuilder = Host.CreateApplicationBuilder()
-            hostBuilder.Logging.AddConsole(fun opts ->
-                opts.LogToStandardErrorThreshold <- LogLevel.Trace) |> ignore
-            hostBuilder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
+            configureLogging hostBuilder config
 
             let mcpBuilder = hostBuilder.Services.AddMcpServer()
             mcpBuilder.WithStdioServerTransport() |> ignore

@@ -3,6 +3,54 @@
 All notable changes to FsMcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.0] - 2026-08-02
+
+### Fixed
+
+- **Stdio servers no longer wedge when the host leaves stderr unread.** A host that
+  spawns an MCP server over stdio owns the child's stderr pipe; hosts that never
+  read it let the pipe fill at 64 KB, reached after a couple of hundred logged
+  requests. The built-in console logger wrote stderr through `ConsolePal`, which
+  takes one process-wide monitor shared with stdout — so a write parked on the full
+  pipe held that lock and the server's next response to stdout blocked behind it.
+  Every caller looked healthy; the server simply went silent while still holding
+  live requests.
+
+  Logging now goes through `NonBlockingStderrLoggerProvider`, which opens file
+  descriptor 2 directly instead of a `ConsoleStream`, so a stalled stderr write can
+  no longer stall stdout. Log lines are handed to a bounded channel in `DropWrite`
+  mode (callers never block, never throw) and drained by one dedicated thread.
+  Diagnostics are dropped under backpressure; requests are not.
+
+  Measured against `examples/EchoServer` with stderr never drained: **204 replies
+  before going silent on 1.1.1, 938,933 after the fix.** Reproduce with
+  `scripts/repro-stdio-stderr-wedge.py`.
+
+  Note for anyone who tried the obvious remedy: `ConsoleLoggerOptions.QueueFullMode
+  = DropWrite` does **not** help. That setting governs behaviour once the logger's
+  queue is full, and the block happens on the console monitor long before the queue
+  fills.
+
+### Added
+
+- `consoleLogging` custom operation on the `mcpServer { }` computation expression,
+  and a matching `ConsoleLogging` field on `ServerConfig`. Defaults to `true`.
+  Set it to `false` when the host discards stderr anyway, so no work is spent
+  formatting messages nobody reads.
+- `scripts/repro-stdio-stderr-wedge.py` — end-to-end harness for the wedge above.
+  It needs a real child process with an undrained stderr pipe, which is why it is a
+  script rather than an Expecto test: in-process the runner always drains stderr and
+  the defect cannot manifest.
+
+### Changed
+
+- `ServerConfig` gained a `ConsoleLogging` field. Code that builds `ServerConfig`
+  through the `mcpServer { }` CE is unaffected; code that constructs the record
+  literally must add the field.
+- Stdio hosts now start from `ClearProviders()`. `Host.CreateApplicationBuilder`
+  registers the built-in console provider by default, and that provider is the one
+  that deadlocks, so it has to go even when logging stays enabled.
+
 ## [1.0.0] - 2026-04-03
 
 ### Added

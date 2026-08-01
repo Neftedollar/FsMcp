@@ -22,6 +22,7 @@ let mkConfig tools =
         Prompts = []
         Middleware = []
         Transport = Stdio
+        ConsoleLogging = true
     }
     config
 
