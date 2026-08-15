@@ -1,6 +1,5 @@
-// FS0057: HttpServerTransportOptions.RunSessionHandler is experimental (SDK diagnostic MCPEXP002).
-// Suppressed here because this is the sole call site in the codebase that sets RunSessionHandler.
-// All other files in FsMcp.Server.Http are unaffected.
+// RunSessionHandler and ConfigureSessionOptions are experimental SDK lifecycle
+// seams. They are centralized here so cleanup and stateless honesty are enforced.
 #nowarn "57"
 
 namespace FsMcp.Server.Http
@@ -8,116 +7,152 @@ namespace FsMcp.Server.Http
 open System
 open System.Threading
 open System.Threading.Tasks
+open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.DependencyInjection
+open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
-open Microsoft.AspNetCore.Builder
-open FsMcp.Core
-open FsMcp.Core.Validation
 open FsMcp.Server
+open ModelContextProtocol.AspNetCore
 open ModelContextProtocol.Server
-open ModelContextProtocol.Protocol
 
-/// HTTP/SSE transport for FsMcp servers.
-/// Requires the ModelContextProtocol.AspNetCore package.
-/// Add this package only if you need HTTP transport;
-/// stdio-only servers use FsMcp.Server directly.
+/// Streamable HTTP composition and convenience runners for FsMcp servers.
 module HttpServer =
 
-    /// Convert F# ToolDefinition to SDK McpServerTool (reuses Server module's logic).
-    let private registerAll (builder: IMcpServerBuilder) (config: ServerConfig) =
-        // Reuse the same bridge logic as Server.run
-        // We need access to the internal createSdkTool etc. from Transport.fs
-        // Since Transport.fs's functions are in the Server module, and we reference FsMcp.Server,
-        // we call Server.registerAll which we'll make internal+visible
-        ()
+    let private cleanupSession
+        (registry: ResourceSubscriptionRegistry option)
+        (server: McpServer) =
 
-    /// Run the MCP server over HTTP (Streamable HTTP + SSE).
-    let run (config: ServerConfig) (endpoint: string option) (url: string) : Task<unit> =
-        task {
-            let builder = WebApplication.CreateBuilder()
-            builder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
+        match registry with
+        | Some registry when not (isNull server) && not (String.IsNullOrWhiteSpace server.SessionId) ->
+            ResourceSubscriptions.unsubscribeAllForSession server.SessionId registry
+        | _ -> ()
 
-            let mcpBuilder = builder.Services.AddMcpServer()
-            mcpBuilder.WithHttpTransport() |> ignore
+    let private configureTransport
+        (configure: HttpServerTransportOptions -> unit)
+        (registration: ServerRegistration) =
 
-            FsMcp.Server.Server.registerAllInternal mcpBuilder config |> ignore
+        registration.Builder.WithHttpTransport(fun options ->
+            configure options
 
-            use app = builder.Build()
-            let route = endpoint |> Option.defaultValue "/"
-            app.MapMcp(route) |> ignore
-            app.Urls.Add(url)
-            do! app.RunAsync()
-        }
+            match registration.Subscriptions with
+            | Some _ ->
+                let configuredSessionOptions = options.ConfigureSessionOptions
+                options.ConfigureSessionOptions <-
+                    Func<HttpContext, McpServerOptions, CancellationToken, Task>(fun context serverOptions cancellationToken ->
+                        task {
+                            if not (isNull configuredSessionOptions) then
+                                do! configuredSessionOptions.Invoke(context, serverOptions, cancellationToken)
 
-    /// Run the MCP server over HTTP and expose the subscription registry.
-    /// The onRegistry callback fires once, before the HTTP host starts, with the
-    /// registry (or None when there are no resources).
-    ///
-    /// HTTP transport: when a client session ends, automatically calls
-    /// ResourceSubscriptions.unsubscribeAllForSession to drop per-session state
-    /// and McpServer references. The cleanup is wired via SDK RunSessionHandler
-    /// (experimental — MCPEXP002 / F# FS0057, suppressed at file level because
-    /// this is the sole call site in the codebase).
-    ///
-    /// Stdio transport (Server.runWithSubscriptions): cleanup on disconnect is NOT
-    /// wired — the SDK does not expose an equivalent hook for stdio as of 1.2.0.
-    /// See: https://github.com/Neftedollar/FsMcp/issues/5
-    ///
-    /// Capture the registry in the caller (typically a mutable cell) so tool
-    /// handlers or external triggers can call ResourceSubscriptions.notifyChanged
-    /// after the host starts running:
-    ///
-    ///     let mutable registry = None
-    ///     do! HttpServer.runWithSubscriptions config (Some "/mcp") "http://localhost:8080" (fun r ->
-    ///         registry <- r
-    ///         Task.FromResult(()))
-    let runWithSubscriptions
+                            if options.Stateless then
+                                // SDK 1.4.1 treats a missing handler for this standard
+                                // method as an empty success. Keep the fail-closed
+                                // handlers, but omit the advertised stateful capability.
+                                if not (isNull serverOptions.Capabilities)
+                                   && not (isNull serverOptions.Capabilities.Resources) then
+                                    serverOptions.Capabilities.Resources.Subscribe <- Nullable()
+                        }
+                        :> Task)
+            | None -> ()
+
+            let configuredRunner = options.RunSessionHandler
+            options.RunSessionHandler <-
+                Func<HttpContext, McpServer, CancellationToken, Task>(fun context server cancellationToken ->
+                    task {
+                        try
+                            if isNull configuredRunner then
+                                do! server.RunAsync(cancellationToken)
+                            else
+                                do! configuredRunner.Invoke(context, server, cancellationToken)
+                        finally
+                            cleanupSession registration.Subscriptions server
+                    }
+                    :> Task))
+        |> ignore
+
+        registration
+
+    /// Compose FsMcp into an existing official SDK builder and add Streamable HTTP.
+    let addToBuilder (config: ServerConfig) (builder: IMcpServerBuilder) =
+        Server.addToBuilderWithSubscriptionsInternal config builder
+        |> configureTransport ignore
+
+    /// Compose FsMcp into an existing SDK builder with explicit transport options.
+    /// Any custom RunSessionHandler is preserved and wrapped in guaranteed cleanup.
+    let addToBuilderWithOptions
+        (config: ServerConfig)
+        (configure: HttpServerTransportOptions -> unit)
+        (builder: IMcpServerBuilder) =
+
+        ArgumentNullException.ThrowIfNull configure
+        Server.addToBuilderWithSubscriptionsInternal config builder
+        |> configureTransport configure
+
+    let addToServices (config: ServerConfig) (services: IServiceCollection) =
+        ArgumentNullException.ThrowIfNull services
+        addToBuilder config (services.AddMcpServer())
+
+    let addToServicesWithOptions
+        (config: ServerConfig)
+        (configure: HttpServerTransportOptions -> unit)
+        (services: IServiceCollection) =
+
+        ArgumentNullException.ThrowIfNull services
+        addToBuilderWithOptions config configure (services.AddMcpServer())
+
+    /// Internal wire-test seam for exercising bounded subscription handlers.
+    let internal addToServicesWithSubscriptionLimitInternal
+        (maxSubscriptionsPerSession: int)
+        (config: ServerConfig)
+        (services: IServiceCollection) =
+
+        ArgumentNullException.ThrowIfNull services
+        Server.addToBuilderWithSubscriptionLimitInternal
+            maxSubscriptionsPerSession
+            config
+            (services.AddMcpServer())
+        |> configureTransport ignore
+
+    let private runCore
         (config: ServerConfig)
         (endpoint: string option)
         (url: string)
-        (onRegistry: FsMcp.Server.ResourceSubscriptionRegistry option -> Task<unit>)
-        : Task<unit> =
+        (onRegistry: ResourceSubscriptionRegistry option -> Task<unit>)
+        (cancellationToken: CancellationToken) =
+
         task {
             let builder = WebApplication.CreateBuilder()
             builder.Logging.SetMinimumLevel(LogLevel.Information) |> ignore
+            let registration = addToServices config builder.Services
+            do! onRegistry registration.Subscriptions
 
-            let mcpBuilder = builder.Services.AddMcpServer()
-
-            let registry = FsMcp.Server.Server.registerAllInternal mcpBuilder config
-
-            // Wire RunSessionHandler so that on session end, per-session subscriptions
-            // are cleaned up automatically. The handler calls McpServer.RunAsync and then,
-            // in the finally block, removes all subscriptions for the disconnected session.
-            // RunSessionHandler signature: Func<HttpContext, McpServer, CancellationToken, Task>
-            mcpBuilder.WithHttpTransport(fun opts ->
-                match registry with
-                | Some reg ->
-                    opts.RunSessionHandler <-
-                        Func<HttpContext, McpServer, CancellationToken, Task>(
-                            fun _ctx server ct ->
-                                task {
-                                    try
-                                        do! server.RunAsync(ct)
-                                    finally
-                                        let sessionId =
-                                            server.SessionId
-                                            |> Option.ofObj
-                                            |> Option.defaultValue ""
-                                        if sessionId <> "" then
-                                            ResourceSubscriptions.unsubscribeAllForSession sessionId reg
-                                } :> Task)
-                | None -> ()) |> ignore
-
-            do! onRegistry registry
-
-            use app = builder.Build()
-            let route = endpoint |> Option.defaultValue "/"
-            app.MapMcp(route) |> ignore
-            app.Urls.Add(url)
-            do! app.RunAsync()
+            use application = builder.Build()
+            application.MapMcp(endpoint |> Option.defaultValue "/") |> ignore
+            application.Urls.Add url
+            do! application.StartAsync cancellationToken
+            do! application.WaitForShutdownAsync cancellationToken
         }
 
-    /// Run the MCP server over HTTP as Async.
-    let runAsync (config: ServerConfig) (endpoint: string option) (url: string) : Async<unit> =
-        run config endpoint url |> Async.AwaitTask
+    /// Run the server over Streamable HTTP until cancellation or shutdown.
+    let runWithCancellation config endpoint url cancellationToken =
+        runCore config endpoint url (fun _ -> Task.FromResult()) cancellationToken
+
+    let run config endpoint url =
+        runWithCancellation config endpoint url CancellationToken.None
+
+    /// Run over Streamable HTTP and expose the opaque subscription handle before
+    /// the application starts. Disconnect cleanup is guaranteed for both runners.
+    let runWithSubscriptionsAndCancellation
+        config endpoint url onRegistry cancellationToken =
+        runCore config endpoint url onRegistry cancellationToken
+
+    let runWithSubscriptions config endpoint url onRegistry =
+        runWithSubscriptionsAndCancellation
+            config endpoint url onRegistry CancellationToken.None
+
+    /// Run over Streamable HTTP as Async with cooperative cancellation.
+    let runAsync config endpoint url =
+        async {
+            let! cancellationToken = Async.CancellationToken
+            do! runWithCancellation config endpoint url cancellationToken |> Async.AwaitTask
+        }

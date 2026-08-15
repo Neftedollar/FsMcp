@@ -40,7 +40,7 @@ const features = [
   },
   {
     title: 'Batteries Included',
-    description: 'Middleware pipeline, telemetry, validation, streaming, notifications, hot reload, and testing utilities — all composable.',
+    description: 'Strict validation, cancellable typed and streaming handlers, bounded resource subscriptions, HTTP/DI composition, and testing utilities.',
   },
 ];
 
@@ -75,11 +75,11 @@ let server = mcpServer {
     name "MyServer"
     version "1.0.0"
     tool (TypedTool.define<GreetArgs> "greet" "Greets"
-        (fun args -> task {
+        (fun args cancellationToken -> task {
+            cancellationToken.ThrowIfCancellationRequested()
             let g = args.greeting |> Option.defaultValue "Hello"
             return Ok [ Content.text $"{g}, {args.name}!" ]
         }) |> unwrapResult)
-    useStdio
 }
 
 Server.run server`}

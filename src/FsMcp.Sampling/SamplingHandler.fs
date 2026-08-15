@@ -42,38 +42,15 @@ module SamplingTool =
           CancellationToken = System.Threading.CancellationToken.None }
 
     /// Define a typed tool whose handler can invoke sampling.
+    [<System.Obsolete("SamplingTool transport wiring was never implemented and now fails closed. Use the SDK request-scoped McpServer sampling API directly.")>]
     let define<'TArgs>
         (name: string)
         (description: string)
         (handler: SamplingContext -> 'TArgs -> Task<Result<Content list, McpError>>)
         : Result<ToolDefinition, ValidationError> =
-
-        let schema = FsMcp.Server.SchemaGen.generateSchema<'TArgs> ()
-        let deserializerOptions =
-            System.Text.Json.JsonSerializerOptions(PropertyNameCaseInsensitive = true)
-
-        // Default handler uses no-op sampling (wired to real client at runtime)
-        let rawHandler (args: Map<string, System.Text.Json.JsonElement>) =
-            task {
-                try
-                    let jsonObj = System.Text.Json.Nodes.JsonObject()
-                    for kv in args do
-                        jsonObj.[kv.Key] <- System.Text.Json.Nodes.JsonNode.Parse(kv.Value.GetRawText())
-                    let json = jsonObj.ToJsonString()
-                    let typedArgs =
-                        System.Text.Json.JsonSerializer.Deserialize<'TArgs>(json, deserializerOptions)
-                    let ctx = noOpContext ()
-                    return! handler ctx typedArgs
-                with ex ->
-                    return Error (HandlerException ex)
-            }
-
-        match ToolName.create name with
-        | Ok tn ->
-            Ok {
-                Name = tn
-                Description = description
-                InputSchema = Some schema
-                Handler = rawHandler
-            }
-        | Error e -> Error e
+        ignore name
+        ignore description
+        ignore handler
+        raise (
+            FsMcp.Server.FsMcpConfigException(
+                "SamplingTool.define used a SamplingNotSupported no-op context in FsMcp 1.x and never reached the connected MCP client. It now fails closed. Production support requires a future SDK RequestContext/McpServer-based handler API."))

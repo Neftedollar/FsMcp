@@ -28,6 +28,14 @@
       "priority": "medium"
     },
     {
+      "id": "fsmcp-open-enterprise-authorization",
+      "name": "Open Enterprise Authorization Guide",
+      "description": "Review the FsMcp 2.0 ID-JAG client flow, security boundaries, and required server protection.",
+      "method": "link",
+      "href": "https://neftedollar.com/FsMcp/docs/enterprise-managed-authorization",
+      "priority": "high"
+    },
+    {
       "id": "fsmcp-open-repository",
       "name": "Read Source Code",
       "description": "Open FsMcp GitHub repository and read source code.",

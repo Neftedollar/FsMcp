@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'FsMcp',
-  tagline: 'Build MCP servers in F# with type safety and zero boilerplate',
+  tagline: 'Typed cancellable MCP servers and secure clients in idiomatic F#',
   favicon: 'img/favicon.ico',
 
   url: 'https://neftedollar.com',
@@ -14,7 +14,11 @@ const config: Config = {
   projectName: 'FsMcp',
 
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: 'throw',
+    },
+  },
 
   i18n: {
     defaultLocale: 'en',
@@ -64,7 +68,7 @@ const config: Config = {
       tagName: 'meta',
       attributes: {
         name: 'description',
-        content: 'FsMcp is an F# toolkit for building Model Context Protocol (MCP) servers and clients with type safety, computation expressions, and zero boilerplate. Wraps the official Microsoft .NET MCP SDK.',
+        content: 'FsMcp 2.0 is an idiomatic F# toolkit for typed cancellable MCP servers, secure clients, ASP.NET Core composition, and enterprise-managed authorization.',
       },
     },
     // SEO: keywords
@@ -88,7 +92,7 @@ const config: Config = {
       tagName: 'meta',
       attributes: {
         property: 'og:description',
-        content: 'Build MCP servers and clients in F# with type safety, computation expressions, and zero boilerplate.',
+        content: 'Build typed cancellable MCP servers and secure clients in idiomatic F#.',
       },
     },
     {
@@ -108,7 +112,7 @@ const config: Config = {
         '@context': 'https://schema.org',
         '@type': 'SoftwareSourceCode',
         name: 'FsMcp',
-        description: 'F# toolkit for building Model Context Protocol (MCP) servers and clients with type safety, computation expressions, and zero boilerplate.',
+        description: 'Idiomatic F# toolkit for typed cancellable MCP servers, secure clients, ASP.NET Core composition, and enterprise-managed authorization.',
         codeRepository: 'https://github.com/Neftedollar/FsMcp',
         programmingLanguage: 'F#',
         runtimePlatform: '.NET 10',

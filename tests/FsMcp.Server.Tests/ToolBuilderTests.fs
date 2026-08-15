@@ -2,6 +2,7 @@ module FsMcp.Server.Tests.ToolBuilderTests
 
 open Expecto
 open System.Text.Json
+open System.Threading
 open System.Threading.Tasks
 open FsMcp.Core
 open FsMcp.Core.Validation
@@ -10,6 +11,7 @@ open FsMcp.Server
 // ───────── Test arg types ─────────
 
 type GreetArgs = { name: string; greeting: string option }
+type StrictArgs = { count: int; enabled: bool }
 
 [<Tests>]
 let toolBuilderTests =
@@ -18,7 +20,7 @@ let toolBuilderTests =
             let td : ToolDefinition = mcpTool {
                 toolName "echo"
                 description "Echoes input"
-                handler (fun (_args: Map<string, JsonElement>) -> task {
+                handler (fun (_args: Map<string, JsonElement>) _ -> task {
                     return Ok [ Content.text "echo" ]
                 })
             }
@@ -30,7 +32,7 @@ let toolBuilderTests =
             let td : ToolDefinition = mcpTool {
                 toolName "greet"
                 description "Greets a person"
-                typedHandler (TypedHandler.create<GreetArgs> (fun args -> task {
+                typedHandler (TypedHandler.create<GreetArgs> (fun args _ -> task {
                     return Ok [ Content.text $"Hello, {args.name}!" ]
                 }))
             }
@@ -56,11 +58,10 @@ let toolBuilderTests =
                 tool (mcpTool {
                     toolName "greet"
                     description "Greets a person"
-                    typedHandler (TypedHandler.create<GreetArgs> (fun args -> task {
+                    typedHandler (TypedHandler.create<GreetArgs> (fun args _ -> task {
                         return Ok [ Content.text $"Hello, {args.name}!" ]
                     }))
                 })
-                useStdio
             }
             Expect.equal (List.length config.Tools) 1 "one tool"
             Expect.equal (ToolName.value config.Tools.[0].Name) "greet" "tool name"
@@ -70,7 +71,7 @@ let toolBuilderTests =
             let td : ToolDefinition = mcpTool {
                 toolName "greet"
                 description "Greets"
-                typedHandler (TypedHandler.create<GreetArgs> (fun args -> task {
+                typedHandler (TypedHandler.create<GreetArgs> (fun args _ -> task {
                     let greeting = args.greeting |> Option.defaultValue "Hello"
                     return Ok [ Content.text $"{greeting}, {args.name}!" ]
                 }))
@@ -78,17 +79,71 @@ let toolBuilderTests =
             let args = Map.ofList [
                 "name", JsonDocument.Parse("\"World\"").RootElement
             ]
-            let result = td.Handler args |> Async.AwaitTask |> Async.RunSynchronously
+            let result = td.Handler args CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
             match result with
             | Ok [ Text t ] -> Expect.equal t "Hello, World!" "default greeting"
             | other -> failtest $"unexpected: %A{other}"
+
+        testCase "TypedHandler.create preserves cancellation" <| fun _ ->
+            let td : ToolDefinition = mcpTool {
+                toolName "cancel"
+                typedHandler (TypedHandler.create<GreetArgs> (fun _ cancellationToken ->
+                    Task.FromCanceled<Result<Content list, McpError>>(cancellationToken)))
+            }
+            use cancellation = new CancellationTokenSource()
+            cancellation.Cancel()
+            let args = Map.ofList [ "name", JsonDocument.Parse("\"test\"").RootElement ]
+            let cancelled =
+                try
+                    td.Handler args cancellation.Token
+                    |> fun pending -> pending.GetAwaiter().GetResult()
+                    |> ignore
+                    false
+                with :? System.OperationCanceledException -> true
+            Expect.isTrue cancelled "typed CE cancellation is not wrapped"
+
+        testCase "typedHandler rejects coercible JSON strings without invocation" <| fun _ ->
+            let mutable invocationCount = 0
+            let td : ToolDefinition = mcpTool {
+                toolName "strict"
+                typedHandler (
+                    TypedHandler.create<StrictArgs> (fun _ _ ->
+                        invocationCount <- invocationCount + 1
+                        Task.FromResult(Ok [])))
+            }
+            let cases = [
+                "numeric string",
+                Map.ofList [
+                    "count", JsonSerializer.SerializeToElement "42"
+                    "enabled", JsonSerializer.SerializeToElement true
+                ]
+                "boolean string",
+                Map.ofList [
+                    "count", JsonSerializer.SerializeToElement 42
+                    "enabled", JsonSerializer.SerializeToElement "true"
+                ]
+            ]
+            for caseName, arguments in cases do
+                let error =
+                    try
+                        td.Handler arguments CancellationToken.None
+                        |> fun pending -> pending.GetAwaiter().GetResult()
+                        |> ignore
+                        failtestf "Expected %s to fail" caseName
+                    with :? ModelContextProtocol.McpProtocolException as caught -> caught
+                Expect.equal
+                    error.ErrorCode
+                    ModelContextProtocol.McpErrorCode.InvalidParams
+                    $"{caseName} code"
+                Expect.equal error.Message "Invalid tool arguments." $"{caseName} message"
+            Expect.equal invocationCount 0 "strict deserialization rejects before the CE handler"
 
         testCase "mcpTool fails if name missing" <| fun _ ->
             Expect.throws
                 (fun () ->
                     let _td : ToolDefinition = mcpTool {
                         description "No name"
-                        handler (fun (_args: Map<string, JsonElement>) -> Task.FromResult(Ok []))
+                        handler (fun (_args: Map<string, JsonElement>) _ -> Task.FromResult(Ok []))
                     }
                     ())
                 "missing name should fail"

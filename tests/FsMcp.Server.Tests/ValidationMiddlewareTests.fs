@@ -17,10 +17,9 @@ let mkConfig () =
     mcpServer {
         name "TestServer"
         version "1.0.0"
-        tool (TypedTool.define<GreetArgs> "greet" "Greets" (fun args -> task {
+        tool (TypedTool.define<GreetArgs> "greet" "Greets" (fun args _ -> task {
             return Ok [ Content.text $"Hello, {args.name}!" ]
         }) |> Result.defaultWith (fun e -> failwith $"%A{e}"))
-        useStdio
     }
 
 let mkCtx method' paramsJson =

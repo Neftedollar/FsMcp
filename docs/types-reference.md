@@ -109,7 +109,7 @@ type ToolDefinition = {
     Name: ToolName
     Description: string
     InputSchema: JsonElement option
-    Handler: Map<string, JsonElement> -> Task<Result<Content list, McpError>>
+    Handler: Map<string, JsonElement> -> CancellationToken -> Task<Result<Content list, McpError>>
 }
 ```
 
@@ -121,7 +121,7 @@ type ResourceDefinition = {
     Name: string
     Description: string option
     MimeType: MimeType option
-    Handler: Map<string, string> -> Task<Result<ResourceContents, McpError>>
+    Handler: Map<string, string> -> CancellationToken -> Task<Result<ResourceContents, McpError>>
 }
 ```
 
@@ -132,7 +132,7 @@ type PromptDefinition = {
     Name: PromptName
     Description: string option
     Arguments: PromptArgument list
-    Handler: Map<string, string> -> Task<Result<McpMessage list, McpError>>
+    Handler: Map<string, string> -> CancellationToken -> Task<Result<McpMessage list, McpError>>
 }
 ```
 
@@ -248,18 +248,14 @@ type ServerConfig = {
     Tools: ToolDefinition list
     Resources: ResourceDefinition list
     Prompts: PromptDefinition list
+    // Obsolete compatibility field; non-empty values fail closed at registration.
     Middleware: McpMiddleware list
-    Transport: Transport
+    ConsoleLogging: bool
 }
 ```
 
-### `Transport`
-
-```fsharp
-type Transport =
-    | Stdio
-    | Http of endpoint: string option
-```
+Transport is selected by the runner, not by `ServerConfig`: use `Server.run`
+for stdio or `FsMcp.Server.Http` for Streamable HTTP.
 
 ### `McpMiddleware`
 
@@ -292,9 +288,9 @@ type McpResponse =
 |---|---|
 | `FsMcp.Core` | `Content`, `ResourceContents`, `McpRole`, `McpMessage`, `McpError`, `ToolDefinition`, `ResourceDefinition`, `PromptDefinition`, `PromptArgument`, `unwrapResult` |
 | `FsMcp.Core.Validation` | `ValidationError`, `ToolName`, `ResourceUri`, `PromptName`, `MimeType`, `ServerName`, `ServerVersion` |
-| `FsMcp.Server` | `ServerConfig`, `Transport`, `McpMiddleware`, `McpContext`, `McpResponse`, `FsMcpConfigException`, `McpServerBuilder`, `mcpServer`, `mcpTool`, `Tool`, `Resource`, `Prompt`, `TypedTool`, `TypedResource`, `TypedPrompt`, `TypedHandler`, `StreamingTool`, `Middleware`, `ValidationMiddleware`, `Telemetry`, `DynamicServer`, `Notifications` |
-| `FsMcp.Client` | `ClientTransport`, `ClientConfig`, `McpClient`, `McpClientAsync`, `ToolInfo`, `ResourceInfo`, `PromptInfo` |
+| `FsMcp.Server` | `ServerConfig`, `ServerRegistration`, `FsMcpConfigException`, `McpServerBuilder`, `mcpServer`, `mcpTool`, `Tool`, `Resource`, `Prompt`, `TypedTool`, `TypedResource`, `TypedPrompt`, `TypedHandler`, `StreamingTool`, resource-subscription types; legacy middleware/dynamic/contextual surfaces are obsolete and fail closed |
+| `FsMcp.Client` | `ClientTransport`, `ClientConfig`, `McpClient`, `McpClientAsync`, `ToolInfo`, `ResourceInfo`, `PromptInfo`, `PromptDetails`, enterprise-managed authorization types |
 | `FsMcp.TaskApi` | `ClientPipeline` |
 | `FsMcp.Testing` | `TestServer`, `Expect`, `McpArbitraries` |
-| `FsMcp.Sampling` | `SamplingRequest`, `SamplingResult`, `SamplingError`, `SamplingContext`, `SamplingTool`, `SampleFunc` |
-| `FsMcp.Server.Http` | `HttpServer` |
+| `FsMcp.Sampling` | Sampling domain types, request builders, and explicit test helpers; `SamplingTool.define` runtime wiring fails closed |
+| `FsMcp.Server.Http` | `HttpServer` plus caller-owned ASP.NET Core composition |

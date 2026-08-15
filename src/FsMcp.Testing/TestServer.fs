@@ -1,6 +1,8 @@
 namespace FsMcp.Testing
 
+open System
 open System.Text.Json
+open System.Threading
 open System.Threading.Tasks
 open FsMcp.Core
 open FsMcp.Core.Validation
@@ -31,11 +33,12 @@ type PromptInfo = {
 /// bypassing transport and protocol overhead.
 module TestServer =
 
-    /// Call a tool handler from the ServerConfig by name.
-    let callTool
+    /// Call a tool handler from the ServerConfig by name, propagating cancellation.
+    let callToolWithCancellation
         (config: ServerConfig)
         (toolName: string)
         (args: Map<string, JsonElement>)
+        (cancellationToken: CancellationToken)
         : Task<Result<Content list, McpError>> =
         task {
             let tool =
@@ -44,8 +47,11 @@ module TestServer =
             match tool with
             | Some td ->
                 try
-                    return! td.Handler args
-                with ex ->
+                    return! td.Handler args cancellationToken
+                with
+                | :? OperationCanceledException when cancellationToken.IsCancellationRequested ->
+                    return raise (OperationCanceledException(cancellationToken))
+                | ex ->
                     return Error (HandlerException ex)
             | None ->
                 match ToolName.create toolName with
@@ -59,11 +65,16 @@ module TestServer =
                     return Error (TransportError $"Invalid tool name: '{toolName}'")
         }
 
-    /// Read a resource handler from the ServerConfig by URI.
-    let readResource
+    /// Call a tool with a non-cancellable test context.
+    let callTool config toolName args =
+        callToolWithCancellation config toolName args CancellationToken.None
+
+    /// Read a resource handler from the ServerConfig by URI, propagating cancellation.
+    let readResourceWithCancellation
         (config: ServerConfig)
         (uri: string)
         (args: Map<string, string>)
+        (cancellationToken: CancellationToken)
         : Task<Result<ResourceContents, McpError>> =
         task {
             let resource =
@@ -72,8 +83,11 @@ module TestServer =
             match resource with
             | Some rd ->
                 try
-                    return! rd.Handler args
-                with ex ->
+                    return! rd.Handler args cancellationToken
+                with
+                | :? OperationCanceledException when cancellationToken.IsCancellationRequested ->
+                    return raise (OperationCanceledException(cancellationToken))
+                | ex ->
                     return Error (HandlerException ex)
             | None ->
                 match ResourceUri.create uri with
@@ -82,11 +96,16 @@ module TestServer =
                     return Error (TransportError $"Invalid resource URI: '{uri}'")
         }
 
-    /// Get a prompt handler from the ServerConfig by name.
-    let getPrompt
+    /// Read a resource with a non-cancellable test context.
+    let readResource config uri args =
+        readResourceWithCancellation config uri args CancellationToken.None
+
+    /// Get a prompt handler from the ServerConfig by name, propagating cancellation.
+    let getPromptWithCancellation
         (config: ServerConfig)
         (promptName: string)
         (args: Map<string, string>)
+        (cancellationToken: CancellationToken)
         : Task<Result<McpMessage list, McpError>> =
         task {
             let prompt =
@@ -95,8 +114,11 @@ module TestServer =
             match prompt with
             | Some pd ->
                 try
-                    return! pd.Handler args
-                with ex ->
+                    return! pd.Handler args cancellationToken
+                with
+                | :? OperationCanceledException when cancellationToken.IsCancellationRequested ->
+                    return raise (OperationCanceledException(cancellationToken))
+                | ex ->
                     return Error (HandlerException ex)
             | None ->
                 match PromptName.create promptName with
@@ -104,6 +126,10 @@ module TestServer =
                 | Error _ ->
                     return Error (TransportError $"Invalid prompt name: '{promptName}'")
         }
+
+    /// Get a prompt with a non-cancellable test context.
+    let getPrompt config promptName args =
+        getPromptWithCancellation config promptName args CancellationToken.None
 
     /// List all tools in the ServerConfig.
     let listTools (config: ServerConfig) : ToolInfo list =

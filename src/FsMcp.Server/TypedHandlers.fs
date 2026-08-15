@@ -4,11 +4,14 @@ open System
 open System.Text.Json
 open System.Text.Json.Nodes
 open System.Text.Json.Schema
+open System.Text.Json.Serialization
 open System.Text.Json.Serialization.Metadata
+open System.Threading
 open System.Threading.Tasks
 open TypeShape.Core
 open FsMcp.Core
 open FsMcp.Core.Validation
+open ModelContextProtocol
 
 /// JSON Schema generation with F# option-awareness via TypeShape.
 /// All TypeShape reflection results are cached per-type for performance.
@@ -17,211 +20,273 @@ module internal SchemaGen =
     open System.Collections.Concurrent
 
     let private jsonOptions =
-        let opts = JsonSerializerOptions()
-        opts.TypeInfoResolver <- DefaultJsonTypeInfoResolver()
-        opts
+        let options = JsonSerializerOptions()
+        options.TypeInfoResolver <- DefaultJsonTypeInfoResolver()
+        options
 
-    /// Cache: Type → set of field names that are F# option types.
     let private optionFieldsCache = ConcurrentDictionary<Type, Set<string>>()
-
-    /// Cache: Type → generated JSON Schema as JsonElement.
     let private schemaCache = ConcurrentDictionary<Type, JsonElement>()
 
-    /// Get the set of field names that are F# option types using TypeShape.
-    /// Result is cached per type.
     let getOptionFields<'T> () : Set<string> =
         optionFieldsCache.GetOrAdd(typeof<'T>, fun _ ->
-            let shape = shapeof<'T>
-            match shape with
-            | Shape.FSharpRecord s ->
-                s.Fields
-                |> Array.choose (fun f ->
-                    let propInfo = f.MemberInfo :?> Reflection.PropertyInfo
-                    let propType = propInfo.PropertyType
-                    if propType.IsGenericType
-                       && propType.GetGenericTypeDefinition() = typedefof<option<_>> then
-                        Some f.Label
+            match shapeof<'T> with
+            | Shape.FSharpRecord shape ->
+                shape.Fields
+                |> Array.choose (fun field ->
+                    let property = field.MemberInfo :?> Reflection.PropertyInfo
+                    let propertyType = property.PropertyType
+                    if propertyType.IsGenericType
+                       && propertyType.GetGenericTypeDefinition() = typedefof<option<_>> then
+                        Some field.Label
                     else
                         None)
                 |> Set.ofArray
             | _ -> Set.empty)
 
-    /// Generate a JSON Schema for type 'T, with F# option fields
-    /// marked as not-required and nullable.
-    /// Result is cached per type.
     let generateSchema<'T> () : JsonElement =
         schemaCache.GetOrAdd(typeof<'T>, fun typ ->
             let schemaNode = jsonOptions.GetJsonSchemaAsNode(typ)
             let optionFields = getOptionFields<'T> ()
 
             match schemaNode with
-            | :? JsonObject as obj ->
-                // Always fix top-level type: ["object", "null"] → "object"
-                match obj.["type"] with
-                | :? JsonArray as typeArr when typeArr.Count = 2 ->
-                    obj.["type"] <- JsonValue.Create("object")
+            | :? JsonObject as schemaObject ->
+                match schemaObject.["type"] with
+                | :? JsonArray as types when types.Count = 2 ->
+                    schemaObject.["type"] <- JsonValue.Create("object")
                 | _ -> ()
 
-                // Fix property types: strip null from required property types
-                match obj.["properties"] with
-                | :? JsonObject as props ->
-                    for prop in props do
-                        match prop.Value with
-                        | :? JsonObject as propObj ->
-                            match propObj.["type"] with
-                            | :? JsonArray as typeArr when typeArr.Count = 2 ->
-                                if not (optionFields.Contains(prop.Key)) then
-                                    let nonNull =
-                                        typeArr |> Seq.cast<JsonNode>
-                                        |> Seq.tryFind (fun n -> n.GetValue<string>() <> "null")
-                                    match nonNull with
-                                    | Some v -> propObj.["type"] <- JsonValue.Create(v.GetValue<string>())
-                                    | None -> ()
+                match schemaObject.["properties"] with
+                | :? JsonObject as properties ->
+                    for property in properties do
+                        match property.Value with
+                        | :? JsonObject as propertyObject ->
+                            match propertyObject.["type"] with
+                            | :? JsonArray as types when types.Count = 2 && not (optionFields.Contains property.Key) ->
+                                types
+                                |> Seq.cast<JsonNode>
+                                |> Seq.tryFind (fun node -> node.GetValue<string>() <> "null")
+                                |> Option.iter (fun node ->
+                                    propertyObject.["type"] <- JsonValue.Create(node.GetValue<string>()))
                             | _ -> ()
                         | _ -> ()
                 | _ -> ()
 
-                // Remove option fields from "required"
                 if not (Set.isEmpty optionFields) then
-                    match obj.["required"] with
+                    match schemaObject.["required"] with
                     | :? JsonArray as required ->
-                        let toRemove =
-                            required
-                            |> Seq.cast<JsonNode>
-                            |> Seq.filter (fun n -> optionFields.Contains(n.GetValue<string>()))
-                            |> Seq.toList
-                        for node in toRemove do
-                            required.Remove(node) |> ignore
+                        required
+                        |> Seq.cast<JsonNode>
+                        |> Seq.filter (fun node -> optionFields.Contains(node.GetValue<string>()))
+                        |> Seq.toList
+                        |> List.iter (required.Remove >> ignore)
+
                         if required.Count = 0 then
-                            obj.Remove("required") |> ignore
+                            schemaObject.Remove("required") |> ignore
                     | _ -> ()
             | _ -> ()
 
             JsonSerializer.SerializeToElement(schemaNode, jsonOptions))
 
-/// Typed handler definitions using F# records as input.
-/// TypeShape inspects the record to generate JSON Schema automatically.
+/// Reads resource and prompt protocol strings as their declared scalar types.
+type internal FlexibleBooleanConverter() =
+    inherit JsonConverter<bool>()
+
+    override _.Read(reader: byref<Utf8JsonReader>, _, _) =
+        match reader.TokenType with
+        | JsonTokenType.True -> true
+        | JsonTokenType.False -> false
+        | JsonTokenType.String ->
+            match Boolean.TryParse(reader.GetString()) with
+            | true, value -> value
+            | _ -> raise (JsonException("Expected 'true' or 'false'."))
+        | _ -> raise (JsonException("Expected a JSON boolean or boolean string."))
+
+    override _.Write(writer, value, _) = writer.WriteBooleanValue(value)
+
+module internal TypedDeserializer =
+    let strictToolOptions () =
+        JsonSerializerOptions(PropertyNameCaseInsensitive = true)
+
+    let protocolStringOptions () =
+        let options =
+            JsonSerializerOptions(
+                PropertyNameCaseInsensitive = true,
+                NumberHandling = JsonNumberHandling.AllowReadingFromString)
+        options.Converters.Add(FlexibleBooleanConverter())
+        options
+
+    // TypedHandler.create is a tool-only entry point.
+    let options = strictToolOptions
+
+    let invalidArguments primitive =
+        McpProtocolException($"Invalid {primitive} arguments.", McpErrorCode.InvalidParams)
+
+    let invalidResult primitive =
+        ProtocolError(int McpErrorCode.InvalidParams, $"Invalid {primitive} arguments.")
+
+    let private requiredArgumentNames (schema: JsonElement) =
+        match schema.TryGetProperty("required") with
+        | false, _ -> Seq.empty
+        | true, required ->
+            required.EnumerateArray()
+            |> Seq.choose (fun item -> Option.ofObj (item.GetString()))
+
+    let hasRequiredArguments (schema: JsonElement) (arguments: Map<string, JsonElement>) =
+        requiredArgumentNames schema
+        |> Seq.forall (fun name ->
+            match Map.tryFind name arguments with
+            | Some value ->
+                value.ValueKind <> JsonValueKind.Null
+                && value.ValueKind <> JsonValueKind.Undefined
+            | None -> false)
+
+    let hasRequiredStringArguments (schema: JsonElement) (arguments: Map<string, string>) =
+        requiredArgumentNames schema
+        |> Seq.forall (fun name ->
+            arguments |> Map.tryFind name |> Option.exists (isNull >> not))
+
 module TypedTool =
 
-    let private deserializerOptions = JsonSerializerOptions(PropertyNameCaseInsensitive = true)
+    let private deserializerOptions = TypedDeserializer.strictToolOptions ()
 
-    /// Define a tool with a strongly-typed F# record as input.
+    /// Define a cancellation-aware tool with a strongly-typed F# record as input.
     /// JSON Schema is auto-generated from the record type via TypeShape.
     let define<'TArgs>
         (name: string)
         (description: string)
-        (handler: 'TArgs -> Task<Result<Content list, McpError>>)
+        (handler: 'TArgs -> CancellationToken -> Task<Result<Content list, McpError>>)
         : Result<ToolDefinition, ValidationError> =
 
         let schema = SchemaGen.generateSchema<'TArgs> ()
 
-        let rawHandler (args: Map<string, JsonElement>) =
+        let rawHandler (arguments: Map<string, JsonElement>) (cancellationToken: CancellationToken) =
             task {
-                try
-                    // Convert Map<string, JsonElement> → JSON string → 'TArgs
-                    let jsonObj = JsonObject()
-                    for kv in args do
-                        jsonObj.[kv.Key] <- JsonNode.Parse(kv.Value.GetRawText())
-                    let json = jsonObj.ToJsonString()
-                    let typedArgs = JsonSerializer.Deserialize<'TArgs>(json, deserializerOptions)
-                    return! handler typedArgs
-                with ex ->
-                    return Error (HandlerException ex)
+                let deserialized =
+                    if not (TypedDeserializer.hasRequiredArguments schema arguments) then
+                        Error(TypedDeserializer.invalidArguments "tool")
+                    else
+                        try
+                            let jsonObject = JsonObject()
+                            for keyValue in arguments do
+                                jsonObject.[keyValue.Key] <- JsonNode.Parse(keyValue.Value.GetRawText())
+                            Ok(JsonSerializer.Deserialize<'TArgs>(jsonObject.ToJsonString(), deserializerOptions))
+                        with :? JsonException ->
+                            Error(TypedDeserializer.invalidArguments "tool")
+
+                match deserialized with
+                | Error error -> return raise error
+                | Ok typedArguments ->
+                    try
+                        return! handler typedArguments cancellationToken
+                    with
+                    | :? OperationCanceledException when cancellationToken.IsCancellationRequested ->
+                        return raise (OperationCanceledException(cancellationToken))
+                    | error -> return Error(HandlerException error)
             }
 
-        match ToolName.create name with
-        | Ok tn ->
-            Ok {
-                Name = tn
-                Description = description
-                InputSchema = Some schema
-                Handler = rawHandler
-            }
-        | Error e -> Error e
+        ToolName.create name
+        |> Result.map (fun toolName ->
+            { Name = toolName
+              Description = description
+              InputSchema = Some schema
+              Handler = rawHandler })
 
 module TypedResource =
 
-    let private deserializerOptions = JsonSerializerOptions(PropertyNameCaseInsensitive = true)
+    let private deserializerOptions = TypedDeserializer.protocolStringOptions ()
 
-    /// Define a resource with a strongly-typed F# record as handler input.
     let define<'TArgs>
         (uri: string)
         (name: string)
-        (handler: 'TArgs -> Task<Result<ResourceContents, McpError>>)
+        (handler: 'TArgs -> CancellationToken -> Task<Result<ResourceContents, McpError>>)
         : Result<ResourceDefinition, ValidationError> =
-
-        let rawHandler (args: Map<string, string>) =
-            task {
-                try
-                    let jsonObj = JsonObject()
-                    for kv in args do
-                        jsonObj.[kv.Key] <- JsonValue.Create(kv.Value)
-                    let json = jsonObj.ToJsonString()
-                    let typedArgs = JsonSerializer.Deserialize<'TArgs>(json, deserializerOptions)
-                    return! handler typedArgs
-                with ex ->
-                    return Error (HandlerException ex)
-            }
-
-        match ResourceUri.create uri with
-        | Ok ru ->
-            Ok {
-                Uri = ru
-                Name = name
-                Description = None
-                MimeType = None
-                Handler = rawHandler
-            }
-        | Error e -> Error e
-
-module TypedPrompt =
-
-    let private deserializerOptions = JsonSerializerOptions(PropertyNameCaseInsensitive = true)
-
-    /// Define a prompt with a strongly-typed F# record as handler input.
-    let define<'TArgs>
-        (name: string)
-        (description: string)
-        (handler: 'TArgs -> Task<Result<McpMessage list, McpError>>)
-        : Result<PromptDefinition, ValidationError> =
 
         let schema = SchemaGen.generateSchema<'TArgs> ()
 
-        // Extract argument definitions from schema
-        let promptArgs =
-            match schema.ValueKind with
-            | JsonValueKind.Object ->
-                match schema.TryGetProperty("properties") with
-                | true, props ->
-                    let optionFields = SchemaGen.getOptionFields<'TArgs> ()
-                    props.EnumerateObject()
-                    |> Seq.map (fun p ->
-                        { PromptArgument.Name = p.Name
-                          Description = None
-                          Required = not (optionFields.Contains(p.Name)) })
-                    |> Seq.toList
-                | _ -> []
+        let rawHandler (arguments: Map<string, string>) (cancellationToken: CancellationToken) =
+            task {
+                let deserialized =
+                    if not (TypedDeserializer.hasRequiredStringArguments schema arguments) then
+                        Error(TypedDeserializer.invalidResult "resource")
+                    else
+                        try
+                            let jsonObject = JsonObject()
+                            for keyValue in arguments do
+                                jsonObject.[keyValue.Key] <- JsonValue.Create(keyValue.Value)
+                            Ok(JsonSerializer.Deserialize<'TArgs>(jsonObject.ToJsonString(), deserializerOptions))
+                        with :? JsonException ->
+                            Error(TypedDeserializer.invalidResult "resource")
+
+                match deserialized with
+                | Error error -> return Error error
+                | Ok typedArguments ->
+                    try
+                        return! handler typedArguments cancellationToken
+                    with
+                    | :? OperationCanceledException when cancellationToken.IsCancellationRequested ->
+                        return raise (OperationCanceledException(cancellationToken))
+                    | error -> return Error(HandlerException error)
+            }
+
+        ResourceUri.create uri
+        |> Result.map (fun resourceUri ->
+            { Uri = resourceUri
+              Name = name
+              Description = None
+              MimeType = None
+              Handler = rawHandler })
+
+module TypedPrompt =
+
+    let private deserializerOptions = TypedDeserializer.protocolStringOptions ()
+
+    let define<'TArgs>
+        (name: string)
+        (description: string)
+        (handler: 'TArgs -> CancellationToken -> Task<Result<McpMessage list, McpError>>)
+        : Result<PromptDefinition, ValidationError> =
+
+        let schema = SchemaGen.generateSchema<'TArgs> ()
+        let optionFields = SchemaGen.getOptionFields<'TArgs> ()
+        let promptArguments =
+            match schema.TryGetProperty("properties") with
+            | true, properties ->
+                properties.EnumerateObject()
+                |> Seq.map (fun property ->
+                    { Name = property.Name
+                      Description = None
+                      Required = not (optionFields.Contains property.Name) })
+                |> Seq.toList
             | _ -> []
 
-        let rawHandler (args: Map<string, string>) =
+        let rawHandler (arguments: Map<string, string>) (cancellationToken: CancellationToken) =
             task {
-                try
-                    let jsonObj = JsonObject()
-                    for kv in args do
-                        jsonObj.[kv.Key] <- JsonValue.Create(kv.Value)
-                    let json = jsonObj.ToJsonString()
-                    let typedArgs = JsonSerializer.Deserialize<'TArgs>(json, deserializerOptions)
-                    return! handler typedArgs
-                with ex ->
-                    return Error (HandlerException ex)
+                let deserialized =
+                    if not (TypedDeserializer.hasRequiredStringArguments schema arguments) then
+                        Error(TypedDeserializer.invalidResult "prompt")
+                    else
+                        try
+                            let jsonObject = JsonObject()
+                            for keyValue in arguments do
+                                jsonObject.[keyValue.Key] <- JsonValue.Create(keyValue.Value)
+                            Ok(JsonSerializer.Deserialize<'TArgs>(jsonObject.ToJsonString(), deserializerOptions))
+                        with :? JsonException ->
+                            Error(TypedDeserializer.invalidResult "prompt")
+
+                match deserialized with
+                | Error error -> return Error error
+                | Ok typedArguments ->
+                    try
+                        return! handler typedArguments cancellationToken
+                    with
+                    | :? OperationCanceledException when cancellationToken.IsCancellationRequested ->
+                        return raise (OperationCanceledException(cancellationToken))
+                    | error -> return Error(HandlerException error)
             }
 
-        match PromptName.create name with
-        | Ok pn ->
-            Ok {
-                Name = pn
-                Description = Some description
-                Arguments = promptArgs
-                Handler = rawHandler
-            }
-        | Error e -> Error e
+        PromptName.create name
+        |> Result.map (fun promptName ->
+            { Name = promptName
+              Description = Some description
+              Arguments = promptArguments
+              Handler = rawHandler })

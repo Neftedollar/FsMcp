@@ -20,12 +20,16 @@ let server = mcpServer {
     tool myToolDefinition     // zero or more tools
     resource myResource       // zero or more resources
     prompt myPrompt           // zero or more prompts
-    middleware myMiddleware    // zero or more middleware
-    useStdio                  // transport (default is stdio)
 }
 ```
 
 Missing `name` or `version` raises `FsMcpConfigException` with a message telling you exactly what to add. Duplicate tool names, resource URIs, or prompt names also raise `FsMcpConfigException`.
+
+`ServerConfig` is transport-agnostic. Choose stdio with `Server.run`, or add
+Streamable HTTP with `HttpServer`. The legacy `middleware` operation is obsolete:
+FsMcp 1.x accepted those declarations but never executed them, so 2.0 rejects a
+non-empty legacy middleware list during registration. Use official SDK request
+filters or ASP.NET Core middleware instead.
 
 ## Untyped tools with `Tool.define`
 
@@ -37,7 +41,8 @@ open FsMcp.Core
 open FsMcp.Server
 
 let echoTool =
-    Tool.define "echo" "Echoes the message back" (fun args ->
+    Tool.define "echo" "Echoes the message back" (fun args cancellationToken ->
+        cancellationToken.ThrowIfCancellationRequested()
         let msg =
             args
             |> Map.tryFind "message"
@@ -52,7 +57,9 @@ let echoTool =
 The handler signature is:
 
 ```
-Map<string, JsonElement> -> Task<Result<Content list, McpError>>
+Map<string, JsonElement>
+    -> CancellationToken
+    -> Task<Result<Content list, McpError>>
 ```
 
 ## Typed tools with `TypedTool.define<'T>`
@@ -63,7 +70,8 @@ Define an F# record for your input. TypeShape inspects it at startup and generat
 type ReverseArgs = { text: string; uppercase: bool option }
 
 let reverseTool =
-    TypedTool.define<ReverseArgs> "reverse" "Reverses the text" (fun args -> task {
+    TypedTool.define<ReverseArgs> "reverse" "Reverses the text" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         let reversed = args.text |> Seq.rev |> System.String.Concat
         let result =
             if args.uppercase |> Option.defaultValue false
@@ -83,7 +91,8 @@ For more control over tool construction, use the nested `mcpTool` CE:
 let myTool = mcpTool {
     toolName "calculate"
     description "Performs a calculation"
-    handler (fun args -> task {
+    handler (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         let a = args |> Map.tryFind "a" |> Option.map (fun j -> j.GetDouble()) |> Option.defaultValue 0.0
         let b = args |> Map.tryFind "b" |> Option.map (fun j -> j.GetDouble()) |> Option.defaultValue 0.0
         return Ok [ Content.text $"{a + b}" ]
@@ -99,7 +108,8 @@ type CalcArgs = { a: float; b: float }
 let typedCalcTool = mcpTool {
     toolName "add"
     description "Add two numbers"
-    typedHandler (TypedHandler.create<CalcArgs> (fun args -> task {
+    typedHandler (TypedHandler.create<CalcArgs> (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         return Ok [ Content.text $"{args.a + args.b}" ]
     }))
 }
@@ -115,7 +125,8 @@ Resources expose data that clients can read. The handler receives `Map<string, s
 open FsMcp.Core.Validation
 
 let statusResource =
-    Resource.define "info://server/status" "Server Status" (fun _ -> task {
+    Resource.define "info://server/status" "Server Status" (fun _ cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         let uri = ResourceUri.create "info://server/status" |> unwrapResult
         let mime = MimeType.create "application/json" |> unwrapResult
         return Ok (TextResource (uri, mime, """{"status":"running"}"""))
@@ -130,10 +141,10 @@ Resource URIs must be absolute with a scheme (e.g., `https://`, `file:///`, `inf
 type FileArgs = { path: string }
 
 let fileResource =
-    TypedResource.define<FileArgs> "file:///docs" "Documentation files" (fun args -> task {
+    TypedResource.define<FileArgs> "file:///docs" "Documentation files" (fun args cancellationToken -> task {
         let uri = ResourceUri.create $"file:///{args.path}" |> unwrapResult
         let mime = MimeType.create "text/plain" |> unwrapResult
-        let! content = System.IO.File.ReadAllTextAsync(args.path)
+        let! content = System.IO.File.ReadAllTextAsync(args.path, cancellationToken)
         return Ok (TextResource (uri, mime, content))
     }) |> unwrapResult
 ```
@@ -146,7 +157,8 @@ Prompts define reusable conversation templates:
 let summarizePrompt =
     Prompt.define "summarize"
         [ { Name = "topic"; Description = Some "The topic to summarize"; Required = true } ]
-        (fun args -> task {
+        (fun args cancellationToken -> task {
+            cancellationToken.ThrowIfCancellationRequested()
             let topic = args |> Map.tryFind "topic" |> Option.defaultValue "unknown"
             return Ok [
                 { Role = User; Content = Content.text $"Please summarize {topic}." }
@@ -164,7 +176,8 @@ Arguments are inferred from the record. Option fields become non-required prompt
 type SummarizeArgs = { topic: string; style: string option }
 
 let typedSummarize =
-    TypedPrompt.define<SummarizeArgs> "summarize" "Summarize a topic" (fun args -> task {
+    TypedPrompt.define<SummarizeArgs> "summarize" "Summarize a topic" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         let style = args.style |> Option.defaultValue "concise"
         return Ok [
             { Role = User; Content = Content.text $"Summarize {args.topic} in a {style} style." }
@@ -174,7 +187,7 @@ let typedSummarize =
 
 ## Running the server
 
-### Stdio transport (default)
+### Stdio transport
 
 ```fsharp
 [<EntryPoint>]
@@ -210,7 +223,16 @@ let main _ =
     0
 ```
 
-`HttpServer.run` takes the `ServerConfig`, an optional route endpoint (defaults to `"/"`), and the URL to listen on. It uses ASP.NET Core with Streamable HTTP + SSE.
+`HttpServer.run` takes the `ServerConfig`, an optional route endpoint (defaults to `"/"`), and the URL to listen on. It uses ASP.NET Core with Streamable HTTP.
+
+For a caller-owned ASP.NET Core host, prefer
+`HttpServer.addToServices config services` (or `addToBuilder`). Stateful HTTP
+composition owns a bounded, opaque resource-subscription registry and removes a
+session's entries when it disconnects. If `HttpServerTransportOptions.Stateless`
+is enabled, FsMcp omits the `resources.subscribe` capability while retaining
+fail-closed handlers: direct subscribe/unsubscribe requests are rejected and
+never retain subscription state. `runWithSubscriptions` exposes the opaque
+registry handle when the host needs to publish `notifications/resources/updated`.
 
 ## Full example combining everything
 
@@ -226,16 +248,19 @@ let server = mcpServer {
     name "DemoServer"
     version "1.0.0"
 
-    tool (TypedTool.define<CalcArgs> "add" "Add two numbers" (fun args -> task {
+    tool (TypedTool.define<CalcArgs> "add" "Add two numbers" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         return Ok [ Content.text $"{args.a + args.b}" ]
     }) |> unwrapResult)
 
-    tool (TypedTool.define<EchoArgs> "echo" "Echo a message" (fun args -> task {
+    tool (TypedTool.define<EchoArgs> "echo" "Echo a message" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         return Ok [ Content.text $"Echo: {args.message}" ]
     }) |> unwrapResult)
 
     resource (
-        Resource.define "info://demo/version" "Version Info" (fun _ -> task {
+        Resource.define "info://demo/version" "Version Info" (fun _ cancellationToken -> task {
+            cancellationToken.ThrowIfCancellationRequested()
             let uri = ResourceUri.create "info://demo/version" |> unwrapResult
             let mime = MimeType.create "text/plain" |> unwrapResult
             return Ok (TextResource (uri, mime, "1.0.0"))
@@ -244,15 +269,14 @@ let server = mcpServer {
     prompt (
         Prompt.define "explain"
             [ { Name = "topic"; Description = Some "Topic to explain"; Required = true } ]
-            (fun args -> task {
+            (fun args cancellationToken -> task {
+                cancellationToken.ThrowIfCancellationRequested()
                 let topic = args |> Map.tryFind "topic" |> Option.defaultValue "something"
                 return Ok [
                     { Role = User; Content = Content.text $"Explain {topic} simply." }
                 ]
             })
         |> unwrapResult)
-
-    useStdio
 }
 
 [<EntryPoint>]

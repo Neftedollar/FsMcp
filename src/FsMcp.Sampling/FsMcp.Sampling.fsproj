@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Description>MCP Sampling support — let server-side tools invoke LLM reasoning via the client</Description>
+    <Description>MCP sampling domain types and test helpers; legacy transport wiring fails closed in 2.0</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
+    <PackageReference Include="ModelContextProtocol" Version="[$(ModelContextProtocolVersion)]" />
   </ItemGroup>
 
 </Project>

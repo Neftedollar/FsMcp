@@ -3,6 +3,83 @@
 All notable changes to FsMcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.0] - 2026-08-15
+
+### Added
+
+- **Enterprise-managed authorization for MCP clients.** `FsMcp.Client` now
+  exposes opaque, validated F# configuration for the stable MCP ID-JAG profile,
+  RFC 8693 token exchange with RFC 7523 identity assertions, bounded
+  single-flight token caching, caller cancellation, redacted diagnostics, and
+  one controlled refresh/replay after an authentication challenge.
+- **Secure server composition.** Stdio and Streamable HTTP servers can be
+  registered into caller-owned service collections/builders so applications can
+  use official SDK request filters and ASP.NET Core authentication and
+  authorization around `MapMcp`.
+- Cancellation-aware client operations and server handlers, plus `Async`
+  wrappers that carry the ambient F# cancellation token.
+- Stateful Streamable HTTP resource subscriptions with bounded fan-out and
+  disconnect cleanup. Stateless HTTP omits the subscribe capability and rejects
+  subscribe requests.
+
+### Changed
+
+- **Breaking:** tool, resource, prompt, typed, contextual, sampling, and
+  streaming handler signatures now receive `CancellationToken` as their final
+  argument. Request cancellation is preserved instead of being converted to a
+  protocol or transport failure.
+- **Breaking:** `McpClient.readResource` now returns the complete
+  `ResourceContents list`; 1.x silently discarded every item after the first.
+  Prompt discovery now exposes declared argument metadata.
+- **Breaking:** resource subscriptions use opaque `SubscriptionId` and
+  `SubscriptionError` values. `subscribe` validates input and returns a
+  `Result`; notification functions accept their registry last for pipeline use.
+- Typed tool input is strict JSON. JSON strings such as `"42"` and `"true"`
+  are no longer coerced to numeric or Boolean fields and fail with `-32602`.
+  String coercion remains available for URI-template and prompt arguments.
+- Package production is reproducible: .NET SDK 10.0.400, MCP SDK 1.4.1,
+  Microsoft.Extensions 10.0.7, exact project lock files, SHA-pinned Actions,
+  vulnerability audits, exact package-set metadata checks, and clean C#/F#
+  consumer builds. Packages publish an `FSharp.Core` floor of 10.1.203 rather
+  than an upper-bounded exact dependency.
+
+### Fixed
+
+- Resource and prompt handlers now receive protocol arguments, server
+  name/version metadata is preserved exactly, handler failures become protocol
+  errors, and exception details no longer expose secrets.
+- Client cancellation, disconnect, process cleanup, and shared disconnect
+  outcomes are deterministic; the client stdio path is covered by a real
+  self-hosted end-to-end test.
+- Streamable HTTP subscription capabilities and behavior now agree in both
+  stateful and stateless modes.
+
+### Removed and fail-closed
+
+- **The dead transport selector was removed.** `ServerConfig.Transport` and the
+  `useStdio` / `useHttp` computation-expression operations never selected the
+  runtime transport. Use `Server.run` for stdio or `FsMcp.Server.Http` for
+  Streamable HTTP.
+- Legacy FsMcp middleware declarations, dynamic hot-reload, contextual
+  notifications, and `SamplingTool.define` no longer pretend to provide runtime
+  behavior that the SDK bridge never wired. Compatibility entry points are
+  obsolete and reject unsupported use; use SDK request filters, request-scoped
+  SDK primitives, or ASP.NET Core middleware directly.
+
+### Enterprise authorization boundaries
+
+- The ready-made flow supports HTTPS endpoints (with explicit loopback HTTP only
+  in development), exact metadata issuer/token-endpoint validation, strict
+  Bearer challenges, same-origin token attachment, bounded bodies/timeouts, and
+  no redirects or HTTPS downgrade.
+- The shipped profile uses `client_secret_post` when a secret is configured.
+  It does not implement `client_secret_basic`, `private_key_jwt`, SAML assertions,
+  DPoP, mTLS sender-constrained tokens, dynamic client registration, or token
+  introspection. Configure those requirements outside the ready-made flow.
+- With the pinned MCP SDK 1.4.1, authorization-server issuer paths or queries
+  are rejected because its RFC 8414 discovery helper cannot preserve them.
+  IdP token endpoints may be configured explicitly and are matched exactly.
+
 ## [1.2.2] - 2026-08-02
 
 ### Fixed

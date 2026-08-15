@@ -76,8 +76,11 @@ task {
     let uri = ResourceUri.create "info://server/status" |> unwrapResult
     let! resource = McpClient.readResource client uri
     match resource with
-    | Ok (TextResource (_, _, text)) -> printfn $"Resource: {text}"
-    | Ok (BlobResource _) -> printfn "Got binary resource"
+    | Ok contents ->
+        for content in contents do
+            match content with
+            | TextResource (_, _, text) -> printfn $"Resource: {text}"
+            | BlobResource _ -> printfn "Got binary resource"
     | Error err -> printfn $"Error: %A{err}"
 
     // List and get a prompt
@@ -107,7 +110,7 @@ All operations return F# domain types:
 | `McpClient.listTools` | `Task<ToolInfo list>` |
 | `McpClient.callTool` | `Task<Result<Content list, McpError>>` |
 | `McpClient.listResources` | `Task<ResourceInfo list>` |
-| `McpClient.readResource` | `Task<Result<ResourceContents, McpError>>` |
+| `McpClient.readResource` | `Task<Result<ResourceContents list, McpError>>` |
 | `McpClient.listPrompts` | `Task<PromptInfo list>` |
 | `McpClient.getPrompt` | `Task<Result<McpMessage list, McpError>>` |
 | `McpClient.disconnect` | `Task<unit>` |
@@ -116,7 +119,8 @@ All operations return F# domain types:
 
 ## `McpClientAsync` module
 
-Every function in `McpClient` has an `Async` counterpart in `McpClientAsync`:
+Each high-level `McpClient` operation has an `Async` counterpart in
+`McpClientAsync`:
 
 ```fsharp
 open FsMcp.Client
@@ -129,7 +133,30 @@ async {
 }
 ```
 
-These are thin wrappers that call `Async.AwaitTask` on the `Task`-based versions.
+Request and connection wrappers carry `Async.CancellationToken` into the
+underlying SDK operation. Disconnect intentionally awaits one shared,
+non-cancellable cleanup task so caller cancellation cannot interrupt ownership
+cleanup.
+
+## Cancellation and shutdown
+
+Every connection and request operation also has a `WithCancellation` form that
+accepts a `CancellationToken`. Requested caller cancellation is rethrown as
+cancellation; an independent transport cancellation becomes a typed transport
+failure. `ClientConfig.ShutdownTimeout` configures the SDK-owned child-process
+cutoff for stdio. For HTTP, it bounds client disposal.
+
+`McpClient.disconnect` is idempotent: concurrent and repeated callers observe
+the same cleanup task and terminal outcome.
+
+## Enterprise-managed authorization
+
+For ID-JAG/enterprise identity assertion deployments, use
+`McpClient.connectEnterpriseManaged` with an opaque
+`EnterpriseManagedAuthorization` session. The session adds same-origin Bearer
+authorization, bounded token caching and one controlled refresh after `401`.
+See [Enterprise-Managed Authorization](enterprise-managed-authorization.md) for
+the complete security and hosting requirements.
 
 ## `ClientPipeline` (FsMcp.TaskApi)
 

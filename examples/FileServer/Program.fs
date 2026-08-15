@@ -11,16 +11,20 @@ let server = mcpServer {
     name "FileServer"
     version "1.0.0"
 
-    tool (TypedTool.define<ReadFileArgs> "read_file" "Read a file's contents" (fun args -> task {
+    tool (TypedTool.define<ReadFileArgs> "read_file" "Read a file's contents" (fun args cancellationToken -> task {
         try
-            let! content = File.ReadAllTextAsync(args.path)
+            let! content = File.ReadAllTextAsync(args.path, cancellationToken)
             return Ok [ Content.text content ]
-        with ex ->
+        with
+        | :? System.OperationCanceledException when cancellationToken.IsCancellationRequested ->
+            return raise (System.OperationCanceledException(cancellationToken))
+        | ex ->
             return Error (TransportError $"Failed to read file: {ex.Message}")
     }) |> unwrapResult)
 
-    tool (TypedTool.define<ListDirArgs> "list_directory" "List files in a directory" (fun args -> task {
+    tool (TypedTool.define<ListDirArgs> "list_directory" "List files in a directory" (fun args cancellationToken -> task {
         try
+            cancellationToken.ThrowIfCancellationRequested()
             let pattern = args.pattern |> Option.defaultValue "*"
             let files = Directory.GetFiles(args.path, pattern) |> Array.map Path.GetFileName
             let dirs = Directory.GetDirectories(args.path) |> Array.map Path.GetFileName
@@ -29,12 +33,16 @@ let server = mcpServer {
                    yield! files |> Array.map (fun f -> $"      {f}") |]
                 |> String.concat "\n"
             return Ok [ Content.text result ]
-        with ex ->
+        with
+        | :? System.OperationCanceledException when cancellationToken.IsCancellationRequested ->
+            return raise (System.OperationCanceledException(cancellationToken))
+        | ex ->
             return Error (TransportError $"Failed to list directory: {ex.Message}")
     }) |> unwrapResult)
 
-    tool (TypedTool.define<FileInfoArgs> "file_info" "Get file metadata" (fun args -> task {
+    tool (TypedTool.define<FileInfoArgs> "file_info" "Get file metadata" (fun args cancellationToken -> task {
         try
+            cancellationToken.ThrowIfCancellationRequested()
             let info = FileInfo(args.path)
             if not info.Exists then
                 return Error (TransportError $"File not found: {args.path}")
@@ -47,11 +55,12 @@ let server = mcpServer {
   "extension": "{info.Extension}"
 }}"""
                 return Ok [ Content.text result ]
-        with ex ->
+        with
+        | :? System.OperationCanceledException when cancellationToken.IsCancellationRequested ->
+            return raise (System.OperationCanceledException(cancellationToken))
+        | ex ->
             return Error (TransportError $"Failed to get file info: {ex.Message}")
     }) |> unwrapResult)
-
-    useStdio
 }
 
 [<EntryPoint>]

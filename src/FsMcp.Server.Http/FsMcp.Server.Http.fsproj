@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Description>HTTP/SSE transport for FsMcp MCP servers via ASP.NET Core</Description>
+    <Description>Streamable HTTP transport for FsMcp MCP servers via ASP.NET Core</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,8 +20,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
+    <PackageReference Include="ModelContextProtocol" Version="[$(ModelContextProtocolVersion)]" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="[$(ModelContextProtocolVersion)]" />
   </ItemGroup>
 
 </Project>

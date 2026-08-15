@@ -11,6 +11,7 @@ const sidebars: SidebarsConfig = {
         'server-guide',
         'middleware-guide',
         'client-guide',
+        'enterprise-managed-authorization',
         'testing-guide',
       ],
     },

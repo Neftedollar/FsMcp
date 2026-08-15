@@ -2,17 +2,20 @@
   <PropertyGroup>
     <Authors>FsMcp Contributors</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://neftedollar.github.io/FsMcp/</PackageProjectUrl>
+    <PackageProjectUrl>https://neftedollar.com/FsMcp/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Neftedollar/FsMcp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>fsharp;mcp;model-context-protocol;ai;llm;tools</PackageTags>
     <Copyright>Copyright (c) FsMcp Contributors</Copyright>
-    <Version>1.2.2</Version>
+    <Version>2.0.0</Version>
+    <PackageReleaseNotes>https://github.com/Neftedollar/FsMcp/blob/v$(Version)/CHANGELOG.md</PackageReleaseNotes>
+    <ModelContextProtocolVersion>1.4.1</ModelContextProtocolVersion>
+    <MicrosoftExtensionsVersion>10.0.7</MicrosoftExtensionsVersion>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <Deterministic>true</Deterministic>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningLevel>5</WarningLevel>
-    <!-- FS0044: [<Obsolete>] warning; suppressed because DynamicServer.onToolsChanged is [<Obsolete>] in SDK v1.1.0+ -->
-    <NoWarn>$(NoWarn);44</NoWarn>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)README.md') AND '$(IsPackable)' != 'false'">
@@ -33,19 +36,19 @@
     <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="FSharp.Core" Version="10.1.203" />
+    <PackageReference Include="FSharp.Core" Version="[10.1.203,)" />
   </ItemGroup>
 
   <ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
-    <PackageReference Include="coverlet.collector" Version="6.*">
+    <PackageReference Include="coverlet.collector" Version="[10.0.1]">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
 
   <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('.Tests'))">
-    <PackageReference Include="FSharp.Analyzers.Build" Version="*" PrivateAssets="all" />
-    <PackageReference Include="Ionide.Analyzers" Version="*">
+    <PackageReference Include="FSharp.Analyzers.Build" Version="[0.5.0]" PrivateAssets="all" />
+    <PackageReference Include="Ionide.Analyzers" Version="[0.16.0]">
       <IncludeAssets>analyzers</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
