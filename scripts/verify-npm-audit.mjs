@@ -13,6 +13,8 @@ const EXPECTED_ADVISORIES = new Set([
 ]);
 const IMAGE_SIZE_ADVISORY_FINGERPRINT =
   '20b851923e893e086bfbd226bbe4e012837a39024324b510aae29259315b0b07';
+const IMAGE_SIZE = 'image-size';
+const IMAGE_SIZE_VERSION = '2.0.2';
 const SEARCH_LOCAL = '@easyops-cn/docusaurus-search-local';
 const SEARCH_LOCAL_VERSION = '0.55.3';
 // npm 10.9.8 derives this breaking downgrade for the direct wrapper and, in
@@ -156,6 +158,13 @@ function sameCanonical(left, right) {
   return JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right));
 }
 
+function sameOrderedArray(left, right) {
+  return Array.isArray(left)
+    && Array.isArray(right)
+    && left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+
 function matchesOneStringSet(actual, alternatives) {
   const actualSet = new Set(actual);
   return actualSet.size === actual.length
@@ -185,23 +194,39 @@ function isGreaterVersion(left, right) {
     && left.slice(0, index).every((earlier, earlierIndex) => earlier === right[earlierIndex]));
 }
 
-function hasReviewedSearchLocalRegistryEvidence({
-  latestSearchLocalVersion,
-  publishedSearchLocalVersions,
-} = {}) {
-  if (latestSearchLocalVersion !== SEARCH_LOCAL_VERSION
-    || !Array.isArray(publishedSearchLocalVersions)
-    || publishedSearchLocalVersions.length === 0
-    || publishedSearchLocalVersions.some((version) => typeof version !== 'string')
-    || !publishedSearchLocalVersions.includes(SEARCH_LOCAL_VERSION)
-    || !publishedSearchLocalVersions.includes(SEARCH_LOCAL_DERIVED_FIX.version)) {
+function hasReviewedPackageRegistryEvidence(
+  {latestVersion, publishedVersions} = {},
+  reviewedVersion,
+  requiredVersions = [],
+) {
+  if (latestVersion !== reviewedVersion
+    || !Array.isArray(publishedVersions)
+    || publishedVersions.length === 0
+    || publishedVersions.some((version) => typeof version !== 'string')
+    || !publishedVersions.includes(reviewedVersion)
+    || requiredVersions.some((version) => !publishedVersions.includes(version))) {
     return false;
   }
-  const published = publishedSearchLocalVersions.map(parsePublishedVersion);
+  const published = publishedVersions.map(parsePublishedVersion);
   if (published.some((version) => version === undefined)) return false;
-  const pinned = parsePublishedVersion(SEARCH_LOCAL_VERSION);
+  const pinned = parsePublishedVersion(reviewedVersion);
   return published
     .every((version) => !isGreaterVersion(version, pinned));
+}
+
+function hasReviewedSearchLocalRegistryEvidence(registryEvidence) {
+  return hasReviewedPackageRegistryEvidence(
+    registryEvidence?.searchLocal,
+    SEARCH_LOCAL_VERSION,
+    [SEARCH_LOCAL_DERIVED_FIX.version],
+  );
+}
+
+function hasReviewedImageSizeRegistryEvidence(registryEvidence) {
+  return hasReviewedPackageRegistryEvidence(
+    registryEvidence?.imageSize,
+    IMAGE_SIZE_VERSION,
+  );
 }
 
 function isReviewedDerivedFixProjection(value, registryEvidence) {
@@ -292,6 +317,12 @@ function validateAudit(audit, now = Date.now(), registryEvidence = {}) {
   const expectedNames = hasSearchLocal ? EXPECTED_WITH_SEARCH_NAMES : EXPECTED_BASE_NAMES;
   if (!sameSet(actualNames, expectedNames)) {
     fail(`Unexpected vulnerable package closure: ${JSON.stringify([...actualNames].sort())}.`);
+  }
+  if (!hasReviewedImageSizeRegistryEvidence(registryEvidence)) {
+    fail(
+      `${IMAGE_SIZE} registry state changed: expected latest version ${IMAGE_SIZE_VERSION} `
+      + `with no newer published version; received ${JSON.stringify(registryEvidence?.imageSize)}.`,
+    );
   }
 
   for (const [name, vulnerability] of Object.entries(entries)) {
@@ -395,7 +426,7 @@ function validateAudit(audit, now = Date.now(), registryEvidence = {}) {
     : 'exact 17-package closure';
 }
 
-function expectRejected(audit, mutate, message, registryEvidence = {}) {
+function expectRejectedUsingEvidence(audit, mutate, message, registryEvidence) {
   const changed = structuredClone(audit);
   mutate(changed);
 
@@ -462,6 +493,8 @@ function runDependencyPolicyNegativeSelfTests(packageJson, packageLock, installe
 }
 
 function runNegativeSelfTests(audit, registryEvidence = {}) {
+  const expectRejected = (candidate, mutate, message, evidence = registryEvidence) =>
+    expectRejectedUsingEvidence(candidate, mutate, message, evidence);
   const descriptorProjection = structuredClone(audit);
   descriptorProjection.vulnerabilities['@docusaurus/mdx-loader'].fixAvailable = {
     name: '@docusaurus/core',
@@ -567,32 +600,78 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
     },
     'an available remediation for a direct dependency was accepted',
   );
-  if (audit.vulnerabilities[SEARCH_LOCAL]) {
-    const reviewedEvidence = {
-      latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
-      publishedSearchLocalVersions: [
+  const reviewedEvidence = {
+    imageSize: {
+      latestVersion: IMAGE_SIZE_VERSION,
+      publishedVersions: ['2.0.1', IMAGE_SIZE_VERSION],
+    },
+    searchLocal: {
+      latestVersion: SEARCH_LOCAL_VERSION,
+      publishedVersions: [
         SEARCH_LOCAL_DERIVED_FIX.version,
         '0.55.2',
         '0.55.3-beta.1',
         SEARCH_LOCAL_VERSION,
       ],
-    };
+    },
+  };
+  expectRejected(
+    audit,
+    () => {},
+    'the image-size exception was accepted without image-size registry evidence',
+    {searchLocal: reviewedEvidence.searchLocal},
+  );
+  for (const [imageSize, message] of [
+    [
+      {latestVersion: '2.0.3', publishedVersions: [IMAGE_SIZE_VERSION, '2.0.3']},
+      'the image-size exception was accepted after the latest tag moved',
+    ],
+    [
+      {latestVersion: IMAGE_SIZE_VERSION, publishedVersions: [IMAGE_SIZE_VERSION, '2.0.3']},
+      'the image-size exception was accepted with a newer stable release',
+    ],
+    [
+      {latestVersion: IMAGE_SIZE_VERSION, publishedVersions: [IMAGE_SIZE_VERSION, '2.1.0-beta.1']},
+      'the image-size exception was accepted with a newer prerelease core',
+    ],
+    [
+      {latestVersion: IMAGE_SIZE_VERSION, publishedVersions: ['2.0.1']},
+      'the image-size exception was accepted without the reviewed release',
+    ],
+    [
+      {latestVersion: IMAGE_SIZE_VERSION, publishedVersions: [IMAGE_SIZE_VERSION, 'not-semver']},
+      'the image-size exception was accepted with malformed version evidence',
+    ],
+  ]) {
+    expectRejected(
+      audit,
+      () => {},
+      message,
+      {...reviewedEvidence, imageSize},
+    );
+  }
+  if (audit.vulnerabilities[SEARCH_LOCAL]) {
     const reviewedImageProjection = structuredClone(audit);
     reviewedImageProjection.vulnerabilities['image-size'].fixAvailable = SEARCH_LOCAL_DERIVED_FIX;
+    reviewedImageProjection.vulnerabilities[SEARCH_LOCAL].fixAvailable = false;
     validateAudit(reviewedImageProjection, Date.now(), reviewedEvidence);
 
     expectRejected(
       reviewedImageProjection,
       () => {},
-      'the reviewed image-size downgrade was accepted without registry evidence',
+      'the reviewed image-size downgrade was accepted without search-local registry evidence',
+      {imageSize: reviewedEvidence.imageSize},
     );
     expectRejected(
       reviewedImageProjection,
       () => {},
       'the reviewed image-size downgrade was accepted when its target was unpublished',
       {
-        latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
-        publishedSearchLocalVersions: ['0.55.2', SEARCH_LOCAL_VERSION],
+        ...reviewedEvidence,
+        searchLocal: {
+          latestVersion: SEARCH_LOCAL_VERSION,
+          publishedVersions: ['0.55.2', SEARCH_LOCAL_VERSION],
+        },
       },
     );
     expectRejected(
@@ -600,12 +679,15 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
       () => {},
       'the reviewed image-size downgrade was accepted with malformed registry evidence',
       {
-        latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
-        publishedSearchLocalVersions: [
-          SEARCH_LOCAL_DERIVED_FIX.version,
-          SEARCH_LOCAL_VERSION,
-          'not-semver',
-        ],
+        ...reviewedEvidence,
+        searchLocal: {
+          latestVersion: SEARCH_LOCAL_VERSION,
+          publishedVersions: [
+            SEARCH_LOCAL_DERIVED_FIX.version,
+            SEARCH_LOCAL_VERSION,
+            'not-semver',
+          ],
+        },
       },
     );
     expectRejected(
@@ -613,12 +695,15 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
       () => {},
       'the reviewed image-size downgrade was accepted with a newer registry version',
       {
-        latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
-        publishedSearchLocalVersions: [
-          SEARCH_LOCAL_DERIVED_FIX.version,
-          SEARCH_LOCAL_VERSION,
-          '0.56.0-beta.1',
-        ],
+        ...reviewedEvidence,
+        searchLocal: {
+          latestVersion: SEARCH_LOCAL_VERSION,
+          publishedVersions: [
+            SEARCH_LOCAL_DERIVED_FIX.version,
+            SEARCH_LOCAL_VERSION,
+            '0.56.0-beta.1',
+          ],
+        },
       },
     );
     expectRejected(
@@ -651,24 +736,29 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
 
     const reviewedProjection = structuredClone(audit);
     reviewedProjection.vulnerabilities[SEARCH_LOCAL].fixAvailable = SEARCH_LOCAL_DERIVED_FIX;
+    reviewedProjection.vulnerabilities['image-size'].fixAvailable = false;
     validateAudit(reviewedProjection, Date.now(), reviewedEvidence);
 
     expectRejected(
       reviewedProjection,
       () => {},
-      'the reviewed search-local downgrade was accepted without registry evidence',
+      'the reviewed search-local downgrade was accepted without search-local registry evidence',
+      {imageSize: reviewedEvidence.imageSize},
     );
     expectRejected(
       reviewedProjection,
       () => {},
       'the reviewed search-local downgrade was accepted when the latest tag moved',
       {
-        latestSearchLocalVersion: '0.55.4',
-        publishedSearchLocalVersions: [
-          SEARCH_LOCAL_DERIVED_FIX.version,
-          SEARCH_LOCAL_VERSION,
-          '0.55.4',
-        ],
+        ...reviewedEvidence,
+        searchLocal: {
+          latestVersion: '0.55.4',
+          publishedVersions: [
+            SEARCH_LOCAL_DERIVED_FIX.version,
+            SEARCH_LOCAL_VERSION,
+            '0.55.4',
+          ],
+        },
       },
     );
     expectRejected(
@@ -676,12 +766,15 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
       () => {},
       'the reviewed search-local downgrade was accepted with a newer stable registry version',
       {
-        latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
-        publishedSearchLocalVersions: [
-          SEARCH_LOCAL_DERIVED_FIX.version,
-          SEARCH_LOCAL_VERSION,
-          '0.55.4',
-        ],
+        ...reviewedEvidence,
+        searchLocal: {
+          latestVersion: SEARCH_LOCAL_VERSION,
+          publishedVersions: [
+            SEARCH_LOCAL_DERIVED_FIX.version,
+            SEARCH_LOCAL_VERSION,
+            '0.55.4',
+          ],
+        },
       },
     );
     expectRejected(
@@ -689,12 +782,15 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
       () => {},
       'the reviewed search-local downgrade was accepted with a newer prerelease version',
       {
-        latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
-        publishedSearchLocalVersions: [
-          SEARCH_LOCAL_DERIVED_FIX.version,
-          SEARCH_LOCAL_VERSION,
-          '0.56.0-beta.1',
-        ],
+        ...reviewedEvidence,
+        searchLocal: {
+          latestVersion: SEARCH_LOCAL_VERSION,
+          publishedVersions: [
+            SEARCH_LOCAL_DERIVED_FIX.version,
+            SEARCH_LOCAL_VERSION,
+            '0.56.0-beta.1',
+          ],
+        },
       },
     );
     expectRejected(
@@ -702,12 +798,15 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
       () => {},
       'the reviewed search-local downgrade was accepted with malformed registry evidence',
       {
-        latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
-        publishedSearchLocalVersions: [
-          SEARCH_LOCAL_DERIVED_FIX.version,
-          SEARCH_LOCAL_VERSION,
-          'not-semver',
-        ],
+        ...reviewedEvidence,
+        searchLocal: {
+          latestVersion: SEARCH_LOCAL_VERSION,
+          publishedVersions: [
+            SEARCH_LOCAL_DERIVED_FIX.version,
+            SEARCH_LOCAL_VERSION,
+            'not-semver',
+          ],
+        },
       },
     );
     expectRejected(
@@ -790,12 +889,90 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
   );
 }
 
-function readNpmRegistryField(npmCommand, websiteRoot, field) {
-  const viewProcess = spawnSync(
-    npmCommand,
+function createNpmInvocation({
+  platform = process.platform,
+  nodeExecutable = process.execPath,
+  npmExecPath = process.env.npm_execpath,
+} = {}) {
+  if (typeof npmExecPath === 'string' && npmExecPath.trim().length > 0) {
+    return {command: nodeExecutable, argumentPrefix: [npmExecPath]};
+  }
+  if (platform === 'win32') {
+    fail(
+      'Cannot execute npm safely on Windows without npm_execpath; '
+      + 'run this verifier through an npm script.',
+    );
+  }
+  return {command: 'npm', argumentPrefix: []};
+}
+
+function invokeNpm(invocation, npmArguments, options, spawn = spawnSync) {
+  return spawn(
+    invocation.command,
+    [...invocation.argumentPrefix, ...npmArguments],
+    options,
+  );
+}
+
+function runNpmInvocationSelfTests() {
+  const npmExecPath = 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js';
+  const windowsInvocation = createNpmInvocation({
+    platform: 'win32',
+    nodeExecutable: 'C:\\Program Files\\nodejs\\node.exe',
+    npmExecPath,
+  });
+  let captured;
+  invokeNpm(
+    windowsInvocation,
+    ['audit', '--json'],
+    {env: {PATH: 'C:\\fake npm path'}},
+    (command, args, options) => {
+      captured = {command, args, options};
+      return {status: 0};
+    },
+  );
+  if (captured.command !== 'C:\\Program Files\\nodejs\\node.exe'
+    || !sameOrderedArray(captured.args, [npmExecPath, 'audit', '--json'])) {
+    fail('npm invocation self-test split or changed the Windows npm_execpath argument.');
+  }
+  if (sameOrderedArray([npmExecPath, '--json', 'audit'], [npmExecPath, 'audit', '--json'])) {
+    fail('npm invocation self-test accepted reordered Windows arguments.');
+  }
+
+  let rejectedMissingWindowsExecPath = false;
+  try {
+    createNpmInvocation({platform: 'win32', npmExecPath: undefined});
+  } catch (error) {
+    rejectedMissingWindowsExecPath = error.message.includes('without npm_execpath');
+  }
+  if (!rejectedMissingWindowsExecPath) {
+    fail('npm invocation self-test accepted Windows without npm_execpath.');
+  }
+
+  const linuxInvocation = createNpmInvocation({platform: 'linux', npmExecPath: undefined});
+  captured = undefined;
+  invokeNpm(
+    linuxInvocation,
+    ['audit', '--json'],
+    {env: {PATH: '/tmp/fake-npm-bin'}},
+    (command, args, options) => {
+      captured = {command, args, options};
+      return {status: 0};
+    },
+  );
+  if (captured.command !== 'npm'
+    || !sameOrderedArray(captured.args, ['audit', '--json'])
+    || captured.options.env.PATH !== '/tmp/fake-npm-bin') {
+    fail('npm invocation self-test broke the PATH-injected non-Windows fallback.');
+  }
+}
+
+function readNpmRegistryField(npmInvocation, websiteRoot, packageName, field) {
+  const viewProcess = invokeNpm(
+    npmInvocation,
     [
       'view',
-      SEARCH_LOCAL,
+      packageName,
       field,
       '--json',
       '--prefer-online',
@@ -809,44 +986,65 @@ function readNpmRegistryField(npmCommand, websiteRoot, field) {
     },
   );
   if (viewProcess.error) {
-    fail(`Could not query npm registry field ${field}: ${viewProcess.error.message}`);
+    fail(`Could not query npm registry field ${packageName} ${field}: ${viewProcess.error.message}`);
   }
   if (viewProcess.status !== 0) {
-    fail(`npm registry query for ${field} exited ${viewProcess.status}: ${viewProcess.stderr}`);
+    fail(
+      `npm registry query for ${packageName} ${field} exited `
+      + `${viewProcess.status}: ${viewProcess.stderr}`,
+    );
   }
   try {
     return JSON.parse(viewProcess.stdout);
   } catch (error) {
-    fail(`npm registry returned invalid JSON for ${field}: ${error.message}`);
+    fail(`npm registry returned invalid JSON for ${packageName} ${field}: ${error.message}`);
   }
 }
 
-function loadSearchLocalRegistryEvidence(npmCommand, websiteRoot) {
-  const registryEvidence = {
-    latestSearchLocalVersion: readNpmRegistryField(
-      npmCommand,
+function loadPackageRegistryEvidence(npmInvocation, websiteRoot, packageName) {
+  return {
+    latestVersion: readNpmRegistryField(
+      npmInvocation,
       websiteRoot,
+      packageName,
       'dist-tags.latest',
     ),
-    publishedSearchLocalVersions: readNpmRegistryField(
-      npmCommand,
+    publishedVersions: readNpmRegistryField(
+      npmInvocation,
       websiteRoot,
+      packageName,
       'versions',
     ),
   };
+}
+
+function loadRegistryEvidence(npmInvocation, websiteRoot) {
+  const registryEvidence = {
+    imageSize: loadPackageRegistryEvidence(npmInvocation, websiteRoot, IMAGE_SIZE),
+    searchLocal: loadPackageRegistryEvidence(npmInvocation, websiteRoot, SEARCH_LOCAL),
+  };
+  if (!hasReviewedImageSizeRegistryEvidence(registryEvidence)) {
+    fail(
+      `${IMAGE_SIZE} registry state changed: expected latest version `
+      + `${IMAGE_SIZE_VERSION} with no newer published version; received `
+      + `${JSON.stringify(registryEvidence.imageSize)}.`,
+    );
+  }
   if (!hasReviewedSearchLocalRegistryEvidence(registryEvidence)) {
     fail(
       `${SEARCH_LOCAL} registry state changed: expected latest version `
       + `${SEARCH_LOCAL_VERSION} with no newer published version; received `
-      + `${JSON.stringify(registryEvidence)}.`,
+      + `${JSON.stringify(registryEvidence.searchLocal)}.`,
     );
   }
   return registryEvidence;
 }
 
 export {
+  createNpmInvocation,
   runDependencyPolicyNegativeSelfTests,
   runNegativeSelfTests,
+  runNpmInvocationSelfTests,
   validateAudit,
   validateDependencyPolicy,
 };
@@ -864,9 +1062,10 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     validateDependencyPolicy(packageJson, packageLock, {requireRoot: true});
     validateDependencyPolicy(packageJson, installedLock, {requireRoot: false});
     runDependencyPolicyNegativeSelfTests(packageJson, packageLock, installedLock);
-    const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    const registryEvidence = loadSearchLocalRegistryEvidence(npmCommand, websiteRoot);
-    const auditProcess = spawnSync(npmCommand, ['audit', '--json'], {
+    runNpmInvocationSelfTests();
+    const npmInvocation = createNpmInvocation();
+    const registryEvidence = loadRegistryEvidence(npmInvocation, websiteRoot);
+    const auditProcess = invokeNpm(npmInvocation, ['audit', '--json'], {
       cwd: websiteRoot,
       encoding: 'utf8',
       maxBuffer: 32 * 1024 * 1024,
