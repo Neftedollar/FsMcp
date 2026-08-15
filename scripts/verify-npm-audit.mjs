@@ -11,24 +11,95 @@ const EXPECTED_ADVISORIES = new Set([
   'https://github.com/advisories/GHSA-5p2g-fcmc-qvqq',
   'https://github.com/advisories/GHSA-w3rx-r6r6-pgpr',
 ]);
-// npm audit has emitted several projections of the same installed dependency graph.
-// These fingerprints cover the report version, complete metadata, and every vulnerability field,
-// after recursively sorting object keys and set-like arrays. They were reviewed
-// against clean npm-ci installs of the committed lockfile on 2026-08-15.
-const EXPECTED_AUDIT_PROFILES = new Map([
-  [
-    '4afc2cd320fc56796f3e67cf03fb44c937ca9220f5775387f5d64b34432fab41',
-    'exact 17-package installed-tree profile',
-  ],
-  [
-    'd1c620a28d532eb62a38da2e2f410262cd3cf8c98dc3b1f340dc573d18e0c150',
-    'exact 18-package profile with search-local rooted through theme-common',
-  ],
-  [
-    '6bc04ae284f202b83caa55299936c7006f90c64bb32fc6270c3b8eac6710c3e6',
-    'exact 18-package profile with search-local rooted through content-docs',
-  ],
+const IMAGE_SIZE_ADVISORY_FINGERPRINT =
+  '20b851923e893e086bfbd226bbe4e012837a39024324b510aae29259315b0b07';
+const SEARCH_LOCAL = '@easyops-cn/docusaurus-search-local';
+// npm audit varies derived `effects` and `fixAvailable` projections even for an
+// unchanged lockfile. The security boundary is the exact package closure, direct
+// package identity, reviewed dependency edges, and exact leaf advisory objects.
+const EXPECTED_WRAPPERS = new Map([
+  ['@docusaurus/core', { isDirect: true, via: [['@docusaurus/mdx-loader']] }],
+  ['@docusaurus/mdx-loader', { isDirect: false, via: [['image-size']] }],
+  ['@docusaurus/plugin-content-blog', {
+    isDirect: false,
+    via: [
+      ['@docusaurus/core', '@docusaurus/mdx-loader', '@docusaurus/theme-common'],
+      ['@docusaurus/core', '@docusaurus/mdx-loader', '@docusaurus/plugin-content-docs', '@docusaurus/theme-common'],
+    ],
+  }],
+  ['@docusaurus/plugin-content-docs', {
+    isDirect: false,
+    via: [['@docusaurus/core', '@docusaurus/mdx-loader', '@docusaurus/theme-common']],
+  }],
+  ['@docusaurus/plugin-content-pages', {
+    isDirect: false,
+    via: [['@docusaurus/core', '@docusaurus/mdx-loader']],
+  }],
+  ['@docusaurus/plugin-css-cascade-layers', { isDirect: false, via: [['@docusaurus/core']] }],
+  ['@docusaurus/plugin-debug', { isDirect: false, via: [['@docusaurus/core']] }],
+  ['@docusaurus/plugin-google-analytics', { isDirect: false, via: [['@docusaurus/core']] }],
+  ['@docusaurus/plugin-google-gtag', { isDirect: false, via: [['@docusaurus/core']] }],
+  ['@docusaurus/plugin-google-tag-manager', { isDirect: false, via: [['@docusaurus/core']] }],
+  ['@docusaurus/plugin-sitemap', { isDirect: false, via: [['@docusaurus/core']] }],
+  ['@docusaurus/plugin-svgr', { isDirect: false, via: [['@docusaurus/core']] }],
+  ['@docusaurus/preset-classic', {
+    isDirect: true,
+    via: [[
+      '@docusaurus/core',
+      '@docusaurus/plugin-content-blog',
+      '@docusaurus/plugin-content-docs',
+      '@docusaurus/plugin-content-pages',
+      '@docusaurus/plugin-css-cascade-layers',
+      '@docusaurus/plugin-debug',
+      '@docusaurus/plugin-google-analytics',
+      '@docusaurus/plugin-google-gtag',
+      '@docusaurus/plugin-google-tag-manager',
+      '@docusaurus/plugin-sitemap',
+      '@docusaurus/plugin-svgr',
+      '@docusaurus/theme-classic',
+      '@docusaurus/theme-common',
+      '@docusaurus/theme-search-algolia',
+    ]],
+  }],
+  ['@docusaurus/theme-classic', {
+    isDirect: false,
+    via: [[
+      '@docusaurus/core',
+      '@docusaurus/mdx-loader',
+      '@docusaurus/plugin-content-blog',
+      '@docusaurus/plugin-content-docs',
+      '@docusaurus/plugin-content-pages',
+      '@docusaurus/theme-common',
+    ]],
+  }],
+  ['@docusaurus/theme-common', {
+    isDirect: false,
+    via: [
+      ['@docusaurus/mdx-loader'],
+      ['@docusaurus/mdx-loader', '@docusaurus/plugin-content-docs'],
+    ],
+  }],
+  ['@docusaurus/theme-search-algolia', {
+    isDirect: false,
+    via: [['@docusaurus/core', '@docusaurus/plugin-content-docs', '@docusaurus/theme-common']],
+  }],
+  [SEARCH_LOCAL, {
+    isDirect: true,
+    via: [['@docusaurus/plugin-content-docs', '@docusaurus/theme-common']],
+  }],
 ]);
+const EXPECTED_BASE_NAMES = new Set(
+  [...EXPECTED_WRAPPERS.keys()].filter((name) => name !== SEARCH_LOCAL).concat('image-size'),
+);
+const EXPECTED_WITH_SEARCH_NAMES = new Set([...EXPECTED_BASE_NAMES, SEARCH_LOCAL]);
+const EXPECTED_DEPENDENCY_COUNTS = {
+  prod: 1293,
+  dev: 1,
+  optional: 21,
+  peer: 1,
+  peerOptional: 0,
+  total: 1315,
+};
 
 function fail(message) {
   throw new Error(message);
@@ -62,9 +133,22 @@ function canonicalize(value) {
   return value;
 }
 
-function auditProfileFingerprint(audit) {
-  const profile = canonicalize(audit);
-  return createHash('sha256').update(JSON.stringify(profile)).digest('hex');
+function fingerprint(value) {
+  return createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
+}
+
+function hasExactKeys(value, expectedKeys) {
+  return sameSet(new Set(Object.keys(value ?? {})), new Set(expectedKeys));
+}
+
+function sameCanonical(left, right) {
+  return JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right));
+}
+
+function matchesOneStringSet(actual, alternatives) {
+  const actualSet = new Set(actual);
+  return actualSet.size === actual.length
+    && alternatives.some((alternative) => sameSet(actualSet, new Set(alternative)));
 }
 
 function validateDependencyPolicy(packageJson, packageLock) {
@@ -111,17 +195,60 @@ function validateAudit(audit, now = Date.now()) {
   if (now >= ALLOWLIST_EXPIRES_AT) {
     fail('The temporary image-size advisory exception expired on 2026-09-30.');
   }
+  if (!hasExactKeys(audit, ['auditReportVersion', 'vulnerabilities', 'metadata'])) {
+    fail('npm audit report shape changed.');
+  }
+  if (audit.auditReportVersion !== 2) {
+    fail(`Unexpected npm audit report version ${audit.auditReportVersion}.`);
+  }
+  if (!hasExactKeys(audit.metadata, ['vulnerabilities', 'dependencies'])) {
+    fail('npm audit metadata shape changed.');
+  }
+  if (!sameCanonical(audit.metadata.dependencies, EXPECTED_DEPENDENCY_COUNTS)) {
+    fail(`Unexpected npm dependency counts: ${JSON.stringify(audit.metadata.dependencies)}.`);
+  }
+
   const entries = audit.vulnerabilities;
   if (entries === null || typeof entries !== 'object' || Array.isArray(entries)) {
     fail('npm audit returned no vulnerabilities object.');
   }
   const actualNames = new Set(Object.keys(entries));
+  const hasSearchLocal = actualNames.has(SEARCH_LOCAL);
+  const expectedNames = hasSearchLocal ? EXPECTED_WITH_SEARCH_NAMES : EXPECTED_BASE_NAMES;
+  if (!sameSet(actualNames, expectedNames)) {
+    fail(`Unexpected vulnerable package closure: ${JSON.stringify([...actualNames].sort())}.`);
+  }
+
+  const outerRanges = new Set();
   for (const [name, vulnerability] of Object.entries(entries)) {
+    if (!hasExactKeys(
+      vulnerability,
+      ['name', 'severity', 'isDirect', 'via', 'effects', 'range', 'nodes', 'fixAvailable'],
+    )) {
+      fail(`${name} vulnerability shape changed.`);
+    }
+    if (vulnerability.name !== name) fail(`${name} has a mismatched package name.`);
     if (vulnerability.severity !== 'high') fail(`${name} changed severity.`);
+    if (!['', '*'].includes(vulnerability.range)) fail(`${name} changed vulnerable range projection.`);
+    outerRanges.add(vulnerability.range);
+    if (!sameCanonical(vulnerability.nodes, [`node_modules/${name}`])) {
+      fail(`${name} changed installed node paths.`);
+    }
+    if (typeof vulnerability.fixAvailable !== 'boolean') {
+      fail(`${name} has an invalid fixAvailable projection.`);
+    }
+    if (!Array.isArray(vulnerability.effects)
+      || new Set(vulnerability.effects).size !== vulnerability.effects.length
+      || vulnerability.effects.some((effect) => typeof effect !== 'string' || !actualNames.has(effect))) {
+      fail(`${name} has an invalid effects projection.`);
+    }
     if (!Array.isArray(vulnerability.via)) {
       fail(`${name} has an invalid dependency/advisory chain.`);
     }
     if (name === 'image-size') {
+      if (vulnerability.isDirect !== false || vulnerability.fixAvailable !== false) {
+        fail('image-size directness or fixability changed.');
+      }
       if (vulnerability.via.length !== 2) {
         fail(`image-size must contain exactly the two reviewed advisories.`);
       }
@@ -136,20 +263,36 @@ function validateAudit(audit, now = Date.now()) {
       if (vulnerability.via.some((item) => typeof item === 'string')) {
         fail('image-size unexpectedly depends on another vulnerable package.');
       }
+      if (fingerprint(vulnerability.via) !== IMAGE_SIZE_ADVISORY_FINGERPRINT) {
+        fail('image-size advisory metadata changed.');
+      }
     } else {
+      const expected = EXPECTED_WRAPPERS.get(name);
+      if (expected === undefined || vulnerability.isDirect !== expected.isDirect) {
+        fail(`${name} direct dependency classification changed.`);
+      }
+      if (expected.isDirect && vulnerability.fixAvailable !== false) {
+        fail(`${name} unexpectedly gained an available direct remediation.`);
+      }
       if (vulnerability.via.some((item) => typeof item !== 'string')) {
         fail(`${name} contains a direct advisory instead of only the image-size dependency chain.`);
       }
-      if (vulnerability.via.some((item) => !actualNames.has(item))) {
-        fail(`${name} depends on an unexpected vulnerable package: ${JSON.stringify(vulnerability.via)}.`);
+      if (!matchesOneStringSet(vulnerability.via, expected.via)) {
+        fail(`${name} changed reviewed dependency edges: ${JSON.stringify(vulnerability.via)}.`);
       }
       if (!reachesImageSize(name, entries)) {
         fail(`${name} does not resolve exclusively to the allowlisted image-size advisories.`);
       }
     }
   }
+  if (outerRanges.size !== 1) {
+    fail(`npm audit mixed vulnerable range projections: ${JSON.stringify([...outerRanges])}.`);
+  }
 
   const counts = audit.metadata?.vulnerabilities;
+  if (!hasExactKeys(counts, ['info', 'low', 'moderate', 'high', 'critical', 'total'])) {
+    fail('npm audit vulnerability count shape changed.');
+  }
   if (
     counts?.info !== 0
     || counts?.low !== 0
@@ -160,16 +303,9 @@ function validateAudit(audit, now = Date.now()) {
   ) {
     fail(`Unexpected npm audit counts: ${JSON.stringify(counts)}.`);
   }
-
-  const fingerprint = auditProfileFingerprint(audit);
-  const profileName = EXPECTED_AUDIT_PROFILES.get(fingerprint);
-  if (profileName === undefined) {
-    fail(
-      `Unexpected vulnerable package closure/profile ${fingerprint}: `
-      + `${JSON.stringify([...actualNames].sort())}.`,
-    );
-  }
-  return profileName;
+  return hasSearchLocal
+    ? 'exact 18-package closure including the search-local wrapper'
+    : 'exact 17-package closure';
 }
 
 function expectRejected(audit, mutate, message) {
@@ -262,6 +398,27 @@ function runNegativeSelfTests(audit) {
       changed.vulnerabilities['image-size'].via[0].range = '<2.0.2';
     },
     'changed advisory metadata with the same URL was accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.vulnerabilities['@docusaurus/core'].effects.push('unreviewed-package');
+    },
+    'an effect outside the exact vulnerable package closure was accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.vulnerabilities['@docusaurus/core'].fixAvailable = 'unknown';
+    },
+    'an invalid derived fixAvailable value was accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.vulnerabilities['@docusaurus/core'].fixAvailable = true;
+    },
+    'an available remediation for a direct dependency was accepted',
   );
 }
 
