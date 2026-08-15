@@ -28,7 +28,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Node.js 22
-        uses: actions/setup-node@1e60f620b9541d93b826e7f7b5e2932c8c9b060c # v4.0.3
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
           node-version: 22
           cache: npm
@@ -61,4 +61,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@decdde0ac072f6dda322f5ec683735d2f4b5e79c # v4.0.5
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

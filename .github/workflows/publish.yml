@@ -112,7 +112,7 @@ jobs:
           if-no-files-found: error
       - name: NuGet login with trusted publishing
         id: nuget-login
-        uses: NuGet/login@32e7a0d1b44d07a36e6519e24bdefac71f01a449 # v1.0.0
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: Neftedollar
       - name: Push to NuGet
