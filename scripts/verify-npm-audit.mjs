@@ -343,7 +343,7 @@ function validateAudit(audit, now = Date.now(), registryEvidence = {}) {
       if (expected.requireNoFix
         && vulnerability.fixAvailable !== false
         && !reviewedSearchProjection) {
-        fail(`${name} unexpectedly gained an available direct remediation.`);
+        fail(`${name} unexpectedly gained an available direct remediation: ${JSON.stringify(vulnerability.fixAvailable)}.`);
       }
       if (vulnerability.via.some((item) => typeof item !== 'string')) {
         fail(`${name} contains a direct advisory instead of only the image-size dependency chain.`);
