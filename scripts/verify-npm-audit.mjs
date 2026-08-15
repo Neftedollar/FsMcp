@@ -151,6 +151,19 @@ function matchesOneStringSet(actual, alternatives) {
     && alternatives.some((alternative) => sameSet(actualSet, new Set(alternative)));
 }
 
+function isValidTransitiveFixProjection(value, actualNames) {
+  if (typeof value === 'boolean') return true;
+  return value !== null
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && hasExactKeys(value, ['name', 'version', 'isSemVerMajor'])
+    && typeof value.name === 'string'
+    && actualNames.has(value.name)
+    && typeof value.version === 'string'
+    && value.version.length > 0
+    && typeof value.isSemVerMajor === 'boolean';
+}
+
 function validateDependencyPolicy(packageJson, packageLock) {
   const exactDocusaurus = [
     ['dependencies', '@docusaurus/core'],
@@ -234,7 +247,7 @@ function validateAudit(audit, now = Date.now()) {
     if (!sameCanonical(vulnerability.nodes, [`node_modules/${name}`])) {
       fail(`${name} changed installed node paths.`);
     }
-    if (typeof vulnerability.fixAvailable !== 'boolean') {
+    if (!isValidTransitiveFixProjection(vulnerability.fixAvailable, actualNames)) {
       fail(`${name} has an invalid fixAvailable projection.`);
     }
     if (!Array.isArray(vulnerability.effects)
@@ -322,6 +335,14 @@ function expectRejected(audit, mutate, message) {
 }
 
 function runNegativeSelfTests(audit) {
+  const descriptorProjection = structuredClone(audit);
+  descriptorProjection.vulnerabilities['@docusaurus/mdx-loader'].fixAvailable = {
+    name: '@docusaurus/core',
+    version: '4.0.0',
+    isSemVerMajor: true,
+  };
+  validateAudit(descriptorProjection);
+
   expectRejected(
     audit,
     (changed) => {
@@ -419,6 +440,29 @@ function runNegativeSelfTests(audit) {
       changed.vulnerabilities['@docusaurus/core'].fixAvailable = true;
     },
     'an available remediation for a direct dependency was accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.vulnerabilities['@docusaurus/mdx-loader'].fixAvailable = {
+        name: 'unreviewed-package',
+        version: '1.0.0',
+        isSemVerMajor: false,
+      };
+    },
+    'a remediation descriptor outside the exact closure was accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.vulnerabilities['@docusaurus/mdx-loader'].fixAvailable = {
+        name: '@docusaurus/core',
+        version: '4.0.0',
+        isSemVerMajor: true,
+        unexpected: true,
+      };
+    },
+    'a malformed remediation descriptor was accepted',
   );
 }
 
