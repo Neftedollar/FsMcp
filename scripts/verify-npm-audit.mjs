@@ -18,7 +18,7 @@ const SEARCH_LOCAL = '@easyops-cn/docusaurus-search-local';
 // unchanged lockfile. The security boundary is the exact package closure, direct
 // package identity, reviewed dependency edges, and exact leaf advisory objects.
 const EXPECTED_WRAPPERS = new Map([
-  ['@docusaurus/core', { isDirect: true, via: [['@docusaurus/mdx-loader']] }],
+  ['@docusaurus/core', { isDirect: true, requireNoFix: true, via: [['@docusaurus/mdx-loader']] }],
   ['@docusaurus/mdx-loader', { isDirect: false, via: [['image-size']] }],
   ['@docusaurus/plugin-content-blog', {
     isDirect: false,
@@ -44,6 +44,7 @@ const EXPECTED_WRAPPERS = new Map([
   ['@docusaurus/plugin-svgr', { isDirect: false, via: [['@docusaurus/core']] }],
   ['@docusaurus/preset-classic', {
     isDirect: true,
+    requireNoFix: true,
     via: [[
       '@docusaurus/core',
       '@docusaurus/plugin-content-blog',
@@ -85,6 +86,7 @@ const EXPECTED_WRAPPERS = new Map([
   }],
   [SEARCH_LOCAL, {
     isDirect: true,
+    requireNoFix: true,
     via: [['@docusaurus/plugin-content-docs', '@docusaurus/theme-common']],
   }],
 ]);
@@ -151,7 +153,7 @@ function matchesOneStringSet(actual, alternatives) {
     && alternatives.some((alternative) => sameSet(actualSet, new Set(alternative)));
 }
 
-function isValidTransitiveFixProjection(value, actualNames) {
+function isValidFixProjection(value, actualNames) {
   if (typeof value === 'boolean') return true;
   return value !== null
     && typeof value === 'object'
@@ -164,7 +166,7 @@ function isValidTransitiveFixProjection(value, actualNames) {
     && typeof value.isSemVerMajor === 'boolean';
 }
 
-function validateDependencyPolicy(packageJson, packageLock) {
+function validateDependencyPolicy(packageJson, packageLock, {requireRoot = true} = {}) {
   const exactDocusaurus = [
     ['dependencies', '@docusaurus/core'],
     ['dependencies', '@docusaurus/preset-classic'],
@@ -188,6 +190,19 @@ function validateDependencyPolicy(packageJson, packageLock) {
     if (packageLock.packages?.[`node_modules/${name}`]?.version !== version) {
       fail(`${name} is not locked to the audited override ${version}.`);
     }
+  }
+  if (packageJson.dependencies?.[SEARCH_LOCAL] !== '0.55.3') {
+    fail(`${SEARCH_LOCAL} must be pinned exactly to 0.55.3.`);
+  }
+  if (packageLock.packages?.[`node_modules/${SEARCH_LOCAL}`]?.version !== '0.55.3') {
+    fail(`${SEARCH_LOCAL} is not installed at the reviewed 0.55.3 version.`);
+  }
+  const lockedRoot = packageLock.packages?.[''];
+  if (requireRoot && !lockedRoot) {
+    fail('The source package lock is missing its root package entry.');
+  }
+  if (lockedRoot && lockedRoot.dependencies?.[SEARCH_LOCAL] !== '0.55.3') {
+    fail(`${SEARCH_LOCAL} is not locked exactly in the root dependency graph.`);
   }
   if (packageLock.lockfileVersion !== 3) {
     fail(`Expected npm lockfileVersion 3, got ${packageLock.lockfileVersion}.`);
@@ -245,7 +260,7 @@ function validateAudit(audit, now = Date.now()) {
     if (!sameCanonical(vulnerability.nodes, [`node_modules/${name}`])) {
       fail(`${name} changed installed node paths.`);
     }
-    if (!isValidTransitiveFixProjection(vulnerability.fixAvailable, actualNames)) {
+    if (!isValidFixProjection(vulnerability.fixAvailable, actualNames)) {
       fail(`${name} has an invalid fixAvailable projection.`);
     }
     if (!Array.isArray(vulnerability.effects)
@@ -282,7 +297,7 @@ function validateAudit(audit, now = Date.now()) {
       if (expected === undefined || vulnerability.isDirect !== expected.isDirect) {
         fail(`${name} direct dependency classification changed.`);
       }
-      if (expected.isDirect && vulnerability.fixAvailable !== false) {
+      if (expected.requireNoFix && vulnerability.fixAvailable !== false) {
         fail(`${name} unexpectedly gained an available direct remediation.`);
       }
       if (vulnerability.via.some((item) => typeof item !== 'string')) {
@@ -326,6 +341,59 @@ function expectRejected(audit, mutate, message) {
   }
 
   fail(`Audit verifier self-test failed: ${message}.`);
+}
+
+function expectDependencyPolicyRejected(packageJson, packageLock, options, mutate, message) {
+  const changedPackageJson = structuredClone(packageJson);
+  const changedPackageLock = structuredClone(packageLock);
+  mutate(changedPackageJson, changedPackageLock);
+
+  try {
+    validateDependencyPolicy(changedPackageJson, changedPackageLock, options);
+  } catch {
+    return;
+  }
+
+  fail(`Dependency policy self-test failed: ${message}.`);
+}
+
+function runDependencyPolicyNegativeSelfTests(packageJson, packageLock, installedLock) {
+  expectDependencyPolicyRejected(
+    packageJson,
+    packageLock,
+    {requireRoot: true},
+    (_changedPackageJson, changedPackageLock) => {
+      delete changedPackageLock.packages[''];
+    },
+    'a missing source-lock root entry was accepted',
+  );
+  expectDependencyPolicyRejected(
+    packageJson,
+    packageLock,
+    {requireRoot: true},
+    (_changedPackageJson, changedPackageLock) => {
+      changedPackageLock.packages[''].dependencies[SEARCH_LOCAL] = '^0.55.1';
+    },
+    'a ranged source-lock root dependency was accepted',
+  );
+  expectDependencyPolicyRejected(
+    packageJson,
+    packageLock,
+    {requireRoot: true},
+    (changedPackageJson) => {
+      changedPackageJson.dependencies[SEARCH_LOCAL] = '^0.55.1';
+    },
+    'a ranged manifest dependency was accepted',
+  );
+  expectDependencyPolicyRejected(
+    packageJson,
+    installedLock,
+    {requireRoot: false},
+    (_changedPackageJson, changedPackageLock) => {
+      changedPackageLock.packages[`node_modules/${SEARCH_LOCAL}`].version = '0.55.2';
+    },
+    'an unexpected installed search package version was accepted',
+  );
 }
 
 function runNegativeSelfTests(audit) {
@@ -434,6 +502,19 @@ function runNegativeSelfTests(audit) {
     },
     'an available remediation for a direct dependency was accepted',
   );
+  if (audit.vulnerabilities[SEARCH_LOCAL]) {
+    expectRejected(
+      audit,
+      (changed) => {
+        changed.vulnerabilities[SEARCH_LOCAL].fixAvailable = {
+          name: SEARCH_LOCAL,
+          version: '0.55.4',
+          isSemVerMajor: false,
+        };
+      },
+      'a future search-local remediation was accepted',
+    );
+  }
   expectRejected(
     audit,
     (changed) => {
@@ -459,7 +540,12 @@ function runNegativeSelfTests(audit) {
   );
 }
 
-export {runNegativeSelfTests, validateAudit, validateDependencyPolicy};
+export {
+  runDependencyPolicyNegativeSelfTests,
+  runNegativeSelfTests,
+  validateAudit,
+  validateDependencyPolicy,
+};
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   try {
@@ -468,14 +554,12 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     if (!existsSync(installedLockPath)) {
       fail('Installed-tree audit requires `npm ci` and node_modules/.package-lock.json.');
     }
-    validateDependencyPolicy(
-      readJson(resolve(websiteRoot, 'package.json')),
-      readJson(resolve(websiteRoot, 'package-lock.json')),
-    );
-    validateDependencyPolicy(
-      readJson(resolve(websiteRoot, 'package.json')),
-      readJson(installedLockPath),
-    );
+    const packageJson = readJson(resolve(websiteRoot, 'package.json'));
+    const packageLock = readJson(resolve(websiteRoot, 'package-lock.json'));
+    const installedLock = readJson(installedLockPath);
+    validateDependencyPolicy(packageJson, packageLock, {requireRoot: true});
+    validateDependencyPolicy(packageJson, installedLock, {requireRoot: false});
+    runDependencyPolicyNegativeSelfTests(packageJson, packageLock, installedLock);
     const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const auditProcess = spawnSync(npmCommand, ['audit', '--json'], {
       cwd: websiteRoot,
