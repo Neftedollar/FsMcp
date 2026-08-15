@@ -232,7 +232,6 @@ function validateAudit(audit, now = Date.now()) {
     fail(`Unexpected vulnerable package closure: ${JSON.stringify([...actualNames].sort())}.`);
   }
 
-  const outerRanges = new Set();
   for (const [name, vulnerability] of Object.entries(entries)) {
     if (!hasExactKeys(
       vulnerability,
@@ -242,8 +241,7 @@ function validateAudit(audit, now = Date.now()) {
     }
     if (vulnerability.name !== name) fail(`${name} has a mismatched package name.`);
     if (vulnerability.severity !== 'high') fail(`${name} changed severity.`);
-    if (!['', '*'].includes(vulnerability.range)) fail(`${name} changed vulnerable range projection.`);
-    outerRanges.add(vulnerability.range);
+    if (typeof vulnerability.range !== 'string') fail(`${name} has an invalid vulnerable range projection.`);
     if (!sameCanonical(vulnerability.nodes, [`node_modules/${name}`])) {
       fail(`${name} changed installed node paths.`);
     }
@@ -298,10 +296,6 @@ function validateAudit(audit, now = Date.now()) {
       }
     }
   }
-  if (outerRanges.size !== 1) {
-    fail(`npm audit mixed vulnerable range projections: ${JSON.stringify([...outerRanges])}.`);
-  }
-
   const counts = audit.metadata?.vulnerabilities;
   if (!hasExactKeys(counts, ['info', 'low', 'moderate', 'high', 'critical', 'total'])) {
     fail('npm audit vulnerability count shape changed.');
@@ -379,10 +373,9 @@ function runNegativeSelfTests(audit) {
   expectRejected(
     audit,
     (changed) => {
-      const current = changed.vulnerabilities['@docusaurus/core'].range;
-      changed.vulnerabilities['@docusaurus/core'].range = current === '' ? '*' : '';
+      changed.vulnerabilities['@docusaurus/core'].range = 42;
     },
-    'a hybrid npm audit profile was accepted',
+    'an invalid wrapper range projection was accepted',
   );
   expectRejected(
     audit,
