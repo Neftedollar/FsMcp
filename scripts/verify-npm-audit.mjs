@@ -319,7 +319,13 @@ function validateAudit(audit, now = Date.now(), registryEvidence = {}) {
     }
     if (name === 'image-size') {
       if (vulnerability.isDirect !== false || vulnerability.fixAvailable !== false) {
-        fail('image-size directness or fixability changed.');
+        fail(
+          'image-size directness or fixability changed: '
+          + `${JSON.stringify({
+            isDirect: vulnerability.isDirect,
+            fixAvailable: vulnerability.fixAvailable,
+          })}.`,
+        );
       }
       if (vulnerability.via.length !== 2) {
         fail(`image-size must contain exactly the two reviewed advisories.`);
