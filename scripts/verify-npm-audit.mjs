@@ -1,32 +1,33 @@
 #!/usr/bin/env node
 
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {existsSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const ALLOWLIST_EXPIRES_AT = Date.parse('2026-09-30T00:00:00Z');
 const EXPECTED_ADVISORIES = new Set([
   'https://github.com/advisories/GHSA-5p2g-fcmc-qvqq',
   'https://github.com/advisories/GHSA-w3rx-r6r6-pgpr',
 ]);
-const EXPECTED_FIXABILITY = new Map([
-  ['@docusaurus/core', false],
-  ['@docusaurus/mdx-loader', false],
-  ['@docusaurus/plugin-content-blog', false],
-  ['@docusaurus/plugin-content-docs', true],
-  ['@docusaurus/plugin-content-pages', true],
-  ['@docusaurus/plugin-css-cascade-layers', false],
-  ['@docusaurus/plugin-debug', true],
-  ['@docusaurus/plugin-google-analytics', true],
-  ['@docusaurus/plugin-google-gtag', true],
-  ['@docusaurus/plugin-google-tag-manager', false],
-  ['@docusaurus/plugin-sitemap', true],
-  ['@docusaurus/plugin-svgr', false],
-  ['@docusaurus/preset-classic', false],
-  ['@docusaurus/theme-classic', true],
-  ['@docusaurus/theme-common', false],
-  ['@docusaurus/theme-search-algolia', true],
-  ['image-size', false],
+// npm audit has emitted several projections of the same installed dependency graph.
+// These fingerprints cover the report version, complete metadata, and every vulnerability field,
+// after recursively sorting object keys and set-like arrays. They were reviewed
+// against clean npm-ci installs of the committed lockfile on 2026-08-15.
+const EXPECTED_AUDIT_PROFILES = new Map([
+  [
+    '4afc2cd320fc56796f3e67cf03fb44c937ca9220f5775387f5d64b34432fab41',
+    'exact 17-package installed-tree profile',
+  ],
+  [
+    'd1c620a28d532eb62a38da2e2f410262cd3cf8c98dc3b1f340dc573d18e0c150',
+    'exact 18-package profile with search-local rooted through theme-common',
+  ],
+  [
+    '6bc04ae284f202b83caa55299936c7006f90c64bb32fc6270c3b8eac6710c3e6',
+    'exact 18-package profile with search-local rooted through content-docs',
+  ],
 ]);
 
 function fail(message) {
@@ -39,6 +40,31 @@ function readJson(path) {
 
 function sameSet(actual, expected) {
   return actual.size === expected.size && [...actual].every((item) => expected.has(item));
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map(canonicalize)
+      .sort((left, right) => {
+        const leftJson = JSON.stringify(left);
+        const rightJson = JSON.stringify(right);
+        return leftJson < rightJson ? -1 : leftJson > rightJson ? 1 : 0;
+      });
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalize(value[key])]),
+    );
+  }
+  return value;
+}
+
+function auditProfileFingerprint(audit) {
+  const profile = canonicalize(audit);
+  return createHash('sha256').update(JSON.stringify(profile)).digest('hex');
 }
 
 function validateDependencyPolicy(packageJson, packageLock) {
@@ -78,7 +104,7 @@ function reachesImageSize(name, entries, visiting = new Set()) {
   const via = entries[name]?.via ?? [];
   const dependencies = via.filter((item) => typeof item === 'string');
   return dependencies.length > 0
-    && dependencies.every((dependency) => reachesImageSize(dependency, entries, new Set(visiting)));
+    && dependencies.some((dependency) => reachesImageSize(dependency, entries, new Set(visiting)));
 }
 
 function validateAudit(audit, now = Date.now()) {
@@ -90,19 +116,8 @@ function validateAudit(audit, now = Date.now()) {
     fail('npm audit returned no vulnerabilities object.');
   }
   const actualNames = new Set(Object.keys(entries));
-  const expectedNames = new Set(EXPECTED_FIXABILITY.keys());
-  if (!sameSet(actualNames, expectedNames)) {
-    fail(`Unexpected vulnerable package closure: ${JSON.stringify([...actualNames].sort())}.`);
-  }
-
-  for (const [name, expectedFixAvailable] of EXPECTED_FIXABILITY) {
-    const vulnerability = entries[name];
-    if (vulnerability.severity !== 'high' || vulnerability.range !== '*') {
-      fail(`${name} changed severity or vulnerable range.`);
-    }
-    if (vulnerability.fixAvailable !== expectedFixAvailable) {
-      fail(`${name} fixAvailable changed from the reviewed value ${expectedFixAvailable}.`);
-    }
+  for (const [name, vulnerability] of Object.entries(entries)) {
+    if (vulnerability.severity !== 'high') fail(`${name} changed severity.`);
     if (!Array.isArray(vulnerability.via)) {
       fail(`${name} has an invalid dependency/advisory chain.`);
     }
@@ -125,7 +140,7 @@ function validateAudit(audit, now = Date.now()) {
       if (vulnerability.via.some((item) => typeof item !== 'string')) {
         fail(`${name} contains a direct advisory instead of only the image-size dependency chain.`);
       }
-      if (vulnerability.via.some((item) => !EXPECTED_FIXABILITY.has(item))) {
+      if (vulnerability.via.some((item) => !actualNames.has(item))) {
         fail(`${name} depends on an unexpected vulnerable package: ${JSON.stringify(vulnerability.via)}.`);
       }
       if (!reachesImageSize(name, entries)) {
@@ -139,12 +154,22 @@ function validateAudit(audit, now = Date.now()) {
     counts?.info !== 0
     || counts?.low !== 0
     || counts?.moderate !== 0
-    || counts?.high !== 17
+    || counts?.high !== actualNames.size
     || counts?.critical !== 0
-    || counts?.total !== 17
+    || counts?.total !== actualNames.size
   ) {
     fail(`Unexpected npm audit counts: ${JSON.stringify(counts)}.`);
   }
+
+  const fingerprint = auditProfileFingerprint(audit);
+  const profileName = EXPECTED_AUDIT_PROFILES.get(fingerprint);
+  if (profileName === undefined) {
+    fail(
+      `Unexpected vulnerable package closure/profile ${fingerprint}: `
+      + `${JSON.stringify([...actualNames].sort())}.`,
+    );
+  }
+  return profileName;
 }
 
 function expectRejected(audit, mutate, message) {
@@ -197,15 +222,52 @@ function runNegativeSelfTests(audit) {
   expectRejected(
     audit,
     (changed) => {
-      changed.vulnerabilities['@docusaurus/core'].range = '';
+      const current = changed.vulnerabilities['@docusaurus/core'].range;
+      changed.vulnerabilities['@docusaurus/core'].range = current === '' ? '*' : '';
     },
-    'a lock-only empty-range profile was accepted as installed-tree evidence',
+    'a hybrid npm audit profile was accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.vulnerabilities['image-size'].nodes.push('node_modules/unreviewed/image-size');
+    },
+    'changed full audit metadata was accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.auditReportVersion += 1;
+    },
+    'a changed audit report schema was accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.metadata.dependencies.prod += 1;
+      changed.metadata.dependencies.total += 1;
+    },
+    'changed dependency counts were accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.vulnerabilities['@docusaurus/core'].via.push('@docusaurus/theme-common');
+    },
+    'a changed allowlisted dependency edge was accepted',
+  );
+  expectRejected(
+    audit,
+    (changed) => {
+      changed.vulnerabilities['image-size'].via[0].range = '<2.0.2';
+    },
+    'changed advisory metadata with the same URL was accepted',
   );
 }
 
 export {runNegativeSelfTests, validateAudit, validateDependencyPolicy};
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   try {
     const websiteRoot = process.cwd();
     const installedLockPath = resolve(websiteRoot, 'node_modules', '.package-lock.json');
@@ -231,11 +293,11 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.
       fail(`npm audit exited ${auditProcess.status}: ${auditProcess.stderr}`);
     }
     const audit = JSON.parse(auditProcess.stdout);
-    validateAudit(audit);
+    const profileName = validateAudit(audit);
     runNegativeSelfTests(audit);
     console.log(
       'npm audit contains only the two unpatched image-size denial-of-service advisories '
-      + 'and their exact 17-package installed-tree Docusaurus dependency closure; '
+      + `and their reviewed ${profileName}; `
       + 'exception expires 2026-09-30.',
     );
   } catch (error) {
