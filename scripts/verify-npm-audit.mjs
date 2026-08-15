@@ -14,6 +14,7 @@ const EXPECTED_ADVISORIES = new Set([
 const IMAGE_SIZE_ADVISORY_FINGERPRINT =
   '20b851923e893e086bfbd226bbe4e012837a39024324b510aae29259315b0b07';
 const SEARCH_LOCAL = '@easyops-cn/docusaurus-search-local';
+const SEARCH_LOCAL_VERSION = '0.55.3';
 // npm audit varies derived `effects` and `fixAvailable` projections even for an
 // unchanged lockfile. The security boundary is the exact package closure, direct
 // package identity, reviewed dependency edges, and exact leaf advisory objects.
@@ -166,6 +167,46 @@ function isValidFixProjection(value, actualNames) {
     && typeof value.isSemVerMajor === 'boolean';
 }
 
+function parsePublishedVersion(value) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(value);
+  return match?.slice(1, 4).map(Number);
+}
+
+function isGreaterVersion(left, right) {
+  return left.some((part, index) => part > right[index]
+    && left.slice(0, index).every((earlier, earlierIndex) => earlier === right[earlierIndex]));
+}
+
+function hasReviewedSearchLocalRegistryEvidence({
+  latestSearchLocalVersion,
+  publishedSearchLocalVersions,
+} = {}) {
+  if (latestSearchLocalVersion !== SEARCH_LOCAL_VERSION
+    || !Array.isArray(publishedSearchLocalVersions)
+    || publishedSearchLocalVersions.length === 0
+    || publishedSearchLocalVersions.some((version) => typeof version !== 'string')
+    || !publishedSearchLocalVersions.includes(SEARCH_LOCAL_VERSION)) {
+    return false;
+  }
+  const published = publishedSearchLocalVersions.map(parsePublishedVersion);
+  if (published.some((version) => version === undefined)) return false;
+  const pinned = parsePublishedVersion(SEARCH_LOCAL_VERSION);
+  return published
+    .every((version) => !isGreaterVersion(version, pinned));
+}
+
+function isReviewedSearchLocalFixProjection(value, registryEvidence) {
+  if (!hasReviewedSearchLocalRegistryEvidence(registryEvidence)) return false;
+  if (value === true) return true;
+  return value !== null
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && hasExactKeys(value, ['name', 'version', 'isSemVerMajor'])
+    && value.name === SEARCH_LOCAL
+    && value.version === SEARCH_LOCAL_VERSION
+    && value.isSemVerMajor === false;
+}
+
 function validateDependencyPolicy(packageJson, packageLock, {requireRoot = true} = {}) {
   const exactDocusaurus = [
     ['dependencies', '@docusaurus/core'],
@@ -191,17 +232,17 @@ function validateDependencyPolicy(packageJson, packageLock, {requireRoot = true}
       fail(`${name} is not locked to the audited override ${version}.`);
     }
   }
-  if (packageJson.dependencies?.[SEARCH_LOCAL] !== '0.55.3') {
-    fail(`${SEARCH_LOCAL} must be pinned exactly to 0.55.3.`);
+  if (packageJson.dependencies?.[SEARCH_LOCAL] !== SEARCH_LOCAL_VERSION) {
+    fail(`${SEARCH_LOCAL} must be pinned exactly to ${SEARCH_LOCAL_VERSION}.`);
   }
-  if (packageLock.packages?.[`node_modules/${SEARCH_LOCAL}`]?.version !== '0.55.3') {
-    fail(`${SEARCH_LOCAL} is not installed at the reviewed 0.55.3 version.`);
+  if (packageLock.packages?.[`node_modules/${SEARCH_LOCAL}`]?.version !== SEARCH_LOCAL_VERSION) {
+    fail(`${SEARCH_LOCAL} is not installed at the reviewed ${SEARCH_LOCAL_VERSION} version.`);
   }
   const lockedRoot = packageLock.packages?.[''];
   if (requireRoot && !lockedRoot) {
     fail('The source package lock is missing its root package entry.');
   }
-  if (lockedRoot && lockedRoot.dependencies?.[SEARCH_LOCAL] !== '0.55.3') {
+  if (lockedRoot && lockedRoot.dependencies?.[SEARCH_LOCAL] !== SEARCH_LOCAL_VERSION) {
     fail(`${SEARCH_LOCAL} is not locked exactly in the root dependency graph.`);
   }
   if (packageLock.lockfileVersion !== 3) {
@@ -219,7 +260,7 @@ function reachesImageSize(name, entries, visiting = new Set()) {
     && dependencies.some((dependency) => reachesImageSize(dependency, entries, new Set(visiting)));
 }
 
-function validateAudit(audit, now = Date.now()) {
+function validateAudit(audit, now = Date.now(), registryEvidence = {}) {
   if (now >= ALLOWLIST_EXPIRES_AT) {
     fail('The temporary image-size advisory exception expired on 2026-09-30.');
   }
@@ -297,7 +338,11 @@ function validateAudit(audit, now = Date.now()) {
       if (expected === undefined || vulnerability.isDirect !== expected.isDirect) {
         fail(`${name} direct dependency classification changed.`);
       }
-      if (expected.requireNoFix && vulnerability.fixAvailable !== false) {
+      const reviewedSearchProjection = name === SEARCH_LOCAL
+        && isReviewedSearchLocalFixProjection(vulnerability.fixAvailable, registryEvidence);
+      if (expected.requireNoFix
+        && vulnerability.fixAvailable !== false
+        && !reviewedSearchProjection) {
         fail(`${name} unexpectedly gained an available direct remediation.`);
       }
       if (vulnerability.via.some((item) => typeof item !== 'string')) {
@@ -330,12 +375,12 @@ function validateAudit(audit, now = Date.now()) {
     : 'exact 17-package closure';
 }
 
-function expectRejected(audit, mutate, message) {
+function expectRejected(audit, mutate, message, registryEvidence = {}) {
   const changed = structuredClone(audit);
   mutate(changed);
 
   try {
-    validateAudit(changed);
+    validateAudit(changed, Date.now(), registryEvidence);
   } catch {
     return;
   }
@@ -396,14 +441,14 @@ function runDependencyPolicyNegativeSelfTests(packageJson, packageLock, installe
   );
 }
 
-function runNegativeSelfTests(audit) {
+function runNegativeSelfTests(audit, registryEvidence = {}) {
   const descriptorProjection = structuredClone(audit);
   descriptorProjection.vulnerabilities['@docusaurus/mdx-loader'].fixAvailable = {
     name: '@docusaurus/core',
     version: '4.0.0',
     isSemVerMajor: true,
   };
-  validateAudit(descriptorProjection);
+  validateAudit(descriptorProjection, Date.now(), registryEvidence);
 
   expectRejected(
     audit,
@@ -503,6 +548,63 @@ function runNegativeSelfTests(audit) {
     'an available remediation for a direct dependency was accepted',
   );
   if (audit.vulnerabilities[SEARCH_LOCAL]) {
+    const reviewedEvidence = {
+      latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
+      publishedSearchLocalVersions: ['0.55.2', '0.55.3-beta.1', SEARCH_LOCAL_VERSION],
+    };
+    const booleanProjection = structuredClone(audit);
+    booleanProjection.vulnerabilities[SEARCH_LOCAL].fixAvailable = true;
+    validateAudit(booleanProjection, Date.now(), reviewedEvidence);
+
+    const exactDescriptorProjection = structuredClone(audit);
+    exactDescriptorProjection.vulnerabilities[SEARCH_LOCAL].fixAvailable = {
+      name: SEARCH_LOCAL,
+      version: SEARCH_LOCAL_VERSION,
+      isSemVerMajor: false,
+    };
+    validateAudit(exactDescriptorProjection, Date.now(), reviewedEvidence);
+
+    expectRejected(
+      booleanProjection,
+      () => {},
+      'a volatile search-local remediation was accepted without registry evidence',
+    );
+    expectRejected(
+      booleanProjection,
+      () => {},
+      'a volatile search-local remediation was accepted when the latest tag moved',
+      {
+        latestSearchLocalVersion: '0.55.4',
+        publishedSearchLocalVersions: [SEARCH_LOCAL_VERSION, '0.55.4'],
+      },
+    );
+    expectRejected(
+      booleanProjection,
+      () => {},
+      'a volatile search-local remediation was accepted with a newer stable registry version',
+      {
+        latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
+        publishedSearchLocalVersions: [SEARCH_LOCAL_VERSION, '0.55.4'],
+      },
+    );
+    expectRejected(
+      booleanProjection,
+      () => {},
+      'a volatile search-local remediation was accepted with a newer prerelease version',
+      {
+        latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
+        publishedSearchLocalVersions: [SEARCH_LOCAL_VERSION, '0.56.0-beta.1'],
+      },
+    );
+    expectRejected(
+      booleanProjection,
+      () => {},
+      'a volatile search-local remediation was accepted with malformed registry evidence',
+      {
+        latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
+        publishedSearchLocalVersions: [SEARCH_LOCAL_VERSION, 'not-semver'],
+      },
+    );
     expectRejected(
       audit,
       (changed) => {
@@ -513,6 +615,7 @@ function runNegativeSelfTests(audit) {
         };
       },
       'a future search-local remediation was accepted',
+      reviewedEvidence,
     );
   }
   expectRejected(
@@ -540,6 +643,59 @@ function runNegativeSelfTests(audit) {
   );
 }
 
+function readNpmRegistryField(npmCommand, websiteRoot, field) {
+  const viewProcess = spawnSync(
+    npmCommand,
+    [
+      'view',
+      SEARCH_LOCAL,
+      field,
+      '--json',
+      '--prefer-online',
+      '--registry=https://registry.npmjs.org/',
+    ],
+    {
+      cwd: websiteRoot,
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: 30_000,
+    },
+  );
+  if (viewProcess.error) {
+    fail(`Could not query npm registry field ${field}: ${viewProcess.error.message}`);
+  }
+  if (viewProcess.status !== 0) {
+    fail(`npm registry query for ${field} exited ${viewProcess.status}: ${viewProcess.stderr}`);
+  }
+  try {
+    return JSON.parse(viewProcess.stdout);
+  } catch (error) {
+    fail(`npm registry returned invalid JSON for ${field}: ${error.message}`);
+  }
+}
+
+function loadSearchLocalRegistryEvidence(npmCommand, websiteRoot) {
+  const registryEvidence = {
+    latestSearchLocalVersion: readNpmRegistryField(
+      npmCommand,
+      websiteRoot,
+      'dist-tags.latest',
+    ),
+    publishedSearchLocalVersions: readNpmRegistryField(
+      npmCommand,
+      websiteRoot,
+      'versions',
+    ),
+  };
+  if (!hasReviewedSearchLocalRegistryEvidence(registryEvidence)) {
+    fail(
+      `${SEARCH_LOCAL} registry state changed: expected latest version `
+      + `${SEARCH_LOCAL_VERSION} with no newer published version.`,
+    );
+  }
+  return registryEvidence;
+}
+
 export {
   runDependencyPolicyNegativeSelfTests,
   runNegativeSelfTests,
@@ -561,6 +717,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     validateDependencyPolicy(packageJson, installedLock, {requireRoot: false});
     runDependencyPolicyNegativeSelfTests(packageJson, packageLock, installedLock);
     const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const registryEvidence = loadSearchLocalRegistryEvidence(npmCommand, websiteRoot);
     const auditProcess = spawnSync(npmCommand, ['audit', '--json'], {
       cwd: websiteRoot,
       encoding: 'utf8',
@@ -571,8 +728,8 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
       fail(`npm audit exited ${auditProcess.status}: ${auditProcess.stderr}`);
     }
     const audit = JSON.parse(auditProcess.stdout);
-    const profileName = validateAudit(audit);
-    runNegativeSelfTests(audit);
+    const profileName = validateAudit(audit, Date.now(), registryEvidence);
+    runNegativeSelfTests(audit, registryEvidence);
     console.log(
       'npm audit contains only the two unpatched image-size denial-of-service advisories '
       + `and their reviewed ${profileName}; `
