@@ -1,11 +1,11 @@
 # FsMcp
 
-**FsMcp is an idiomatic F# toolkit for building [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers and clients.** It wraps the official [Microsoft ModelContextProtocol .NET SDK](https://github.com/modelcontextprotocol/csharp-sdk) with computation expressions, typed tool handlers, Result-based error handling, and composable middleware — so you can build MCP servers in F# with type safety and zero boilerplate.
+**FsMcp is an idiomatic F# toolkit for building [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers and clients.** It wraps the official [Microsoft ModelContextProtocol .NET SDK](https://github.com/modelcontextprotocol/csharp-sdk) with computation expressions, typed cancellable handlers, Result-based error handling, secure ASP.NET Core composition, and enterprise-managed authorization.
 
 [![CI](https://github.com/Neftedollar/FsMcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Neftedollar/FsMcp/actions)
 [![NuGet](https://img.shields.io/nuget/v/FsMcp.Server.svg)](https://www.nuget.org/packages/FsMcp.Server)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-neftedollar.github.io%2FFsMcp-blue)](https://neftedollar.github.io/FsMcp/)
+[![Docs](https://img.shields.io/badge/docs-neftedollar.com%2FFsMcp-blue)](https://neftedollar.com/FsMcp/)
 
 ```fsharp
 type GreetArgs = { name: string; greeting: string option }
@@ -14,12 +14,11 @@ let server = mcpServer {
     name "MyServer"
     version "1.0.0"
 
-    tool (TypedTool.define<GreetArgs> "greet" "Greets a person" (fun args -> task {
+    tool (TypedTool.define<GreetArgs> "greet" "Greets a person" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         let greeting = args.greeting |> Option.defaultValue "Hello"
         return Ok [ Content.text $"{greeting}, {args.name}!" ]
     }) |> unwrapResult)
-
-    useStdio
 }
 
 Server.run server |> fun t -> t.GetAwaiter().GetResult()
@@ -33,8 +32,8 @@ dotnet add package FsMcp.Server     # server builder + stdio transport
 dotnet add package FsMcp.Client     # typed client wrapper
 dotnet add package FsMcp.Testing    # test helpers + FsCheck generators
 dotnet add package FsMcp.TaskApi    # FsToolkit.ErrorHandling pipeline
-dotnet add package FsMcp.Server.Http  # HTTP/SSE transport (opt-in ASP.NET)
-dotnet add package FsMcp.Sampling   # LLM sampling from server tools
+dotnet add package FsMcp.Server.Http  # Streamable HTTP transport (opt-in ASP.NET)
+dotnet add package FsMcp.Sampling   # sampling types and explicit test helpers
 ```
 
 ## Why FsMcp?
@@ -43,8 +42,10 @@ dotnet add package FsMcp.Sampling   # LLM sampling from server tools
 - **`TypedTool.define<'T>`** — F# record as input, JSON Schema auto-generated via TypeShape
 - **`Result<'T, McpError>`** — no exceptions in expected paths, typed errors everywhere
 - **Smart constructors** — `ToolName.create` validates at construction, not at runtime
-- **Composable middleware** — logging, validation, telemetry via `Middleware.pipeline`
-- **322 tests** — Expecto + FsCheck property tests on every domain type
+- **Cancellable handlers** — the protocol request token reaches F# tool, resource, and prompt handlers
+- **Secure hosting composition** — caller-owned DI, typed SDK filters, and ASP.NET authorization
+- **Enterprise-managed authorization** — typed ID-JAG client flow with bounded refresh/retry
+- **Broad test suite** — Expecto + FsCheck properties plus real wire/transport tests
 
 ## Quick Start
 
@@ -61,16 +62,16 @@ let server = mcpServer {
     name "Calculator"
     version "1.0.0"
 
-    tool (TypedTool.define<CalcArgs> "add" "Add two numbers" (fun args -> task {
+    tool (TypedTool.define<CalcArgs> "add" "Add two numbers" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         return Ok [ Content.text $"{args.a + args.b}" ]
     }) |> unwrapResult)
 
-    tool (TypedTool.define<CalcArgs> "divide" "Divide a by b" (fun args -> task {
+    tool (TypedTool.define<CalcArgs> "divide" "Divide a by b" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         if args.b = 0.0 then return Error (TransportError "Division by zero")
         else return Ok [ Content.text $"{args.a / args.b}" ]
     }) |> unwrapResult)
-
-    useStdio
 }
 
 Server.run server |> fun t -> t.GetAwaiter().GetResult()
@@ -114,6 +115,23 @@ let demo () = task {
 }
 ```
 
+### Sampling status
+
+`SamplingTool.define` is deliberately fail-closed in 2.0: its 1.x transport
+path never reached the connected client. Use the SDK request-scoped sampling
+primitive directly until FsMcp exposes a correctly wired replacement.
+
+### Enterprise-managed authorization
+
+`FsMcp.Client` 2.0 includes an F#-first wrapper for the stable MCP ID-JAG
+enterprise authorization profile: validated opaque configuration, bounded
+single-flight token caching, cancellation, redacted failures, same-origin
+Bearer injection, and one controlled refresh/retry after `401`.
+
+See the
+[Enterprise-Managed Authorization guide](docs/enterprise-managed-authorization.md)
+for the client flow and the required ASP.NET Core resource-server protection.
+
 ### Testing
 
 ```fsharp
@@ -139,9 +157,8 @@ result |> Expect.mcpHasTextContent "30" "addition works"
 │              │                              │                   │
 │ CE builder     Types (DUs, records)         │ Typed wrapper     │
 │ TypedHandlers  Validation (smart ctors)     │ Async module      │
-│ Middleware     Serialization (JSON)          │                   │
-│ Streaming      Interop (internal)           │                   │
-│ Telemetry                                   │                   │
+│ DI composition Serialization (JSON)          │ EMA / ID-JAG      │
+│ SDK filters    Interop (internal)           │                   │
 ├──────────────┴──────────────────────────────┴───────────────────┤
 │              Microsoft ModelContextProtocol SDK                  │
 ├─────────────────────────────────────────────────────────────────┤
@@ -154,29 +171,28 @@ result |> Expect.mcpHasTextContent "30" "addition works"
 | Package | What it does |
 |---------|-------------|
 | **FsMcp.Core** | Domain types, smart constructors, JSON serialization |
-| **FsMcp.Server** | `mcpServer { }` CE, typed handlers, middleware, stdio transport |
-| **FsMcp.Server.Http** | HTTP/SSE transport via ASP.NET Core (opt-in) |
-| **FsMcp.Client** | Typed client with `Result<'T, McpError>` |
+| **FsMcp.Server** | `mcpServer { }` CE, cancellable typed handlers, stdio, DI composition |
+| **FsMcp.Server.Http** | Streamable HTTP transport and ASP.NET Core composition |
+| **FsMcp.Client** | Typed client plus enterprise-managed authorization |
 | **FsMcp.Testing** | `TestServer.callTool`, `Expect.mcp*`, FsCheck generators |
 | **FsMcp.TaskApi** | `taskResult { }` pipeline via FsToolkit.ErrorHandling |
-| **FsMcp.Sampling** | Server-side LLM invocation via MCP sampling |
+| **FsMcp.Sampling** | Sampling domain types and explicit test helpers; legacy transport wiring fails closed |
 
 ## Features
 
 - **Typed tool handlers** — `TypedTool.define<'T>` with TypeShape-powered JSON Schema + caching
 - **Nested CE** — `mcpTool { toolName "..."; typedHandler ... }`
 - **Streaming tools** — `StreamingTool.define` with `IAsyncEnumerable<Content>`
-- **Notifications** — `ContextualTool.define` with progress + log callbacks
-- **Validation middleware** — auto-validates args against schema before handler
-- **Telemetry** — `Telemetry.tracing()` (Activity/OTel) + `MetricsCollector`
-- **Hot reload** — `DynamicServer.addTool` / `removeTool` at runtime
+- **Explicit request cancellation** — every primary handler receives the SDK token
+- **Secure hosting composition** — register FsMcp into caller-owned SDK/ASP.NET builders
+- **Enterprise authorization** — stable ID-JAG client profile with bounded security defaults
 - **Error handling** — `FsToolkit.ErrorHandling` integration via `FsMcp.TaskApi`
 
 ## Build & Test
 
 ```bash
 dotnet build       # 7 packages
-dotnet test        # 322 tests (Expecto + FsCheck)
+dotnet test        # Expecto + FsCheck + real transport tests
 ```
 
 ## Runtime tuning for stdio servers
@@ -205,7 +221,7 @@ See [`examples/`](examples/) for runnable MCP servers:
 2. **Idiomatic F#** — DUs, Result, CEs, pipe-friendly
 3. **Type safety** — private constructors, no `obj` in public API
 4. **Test-first** — Expecto + FsCheck on every function
-5. **Composable** — middleware, function handlers, no inheritance
+5. **Honest boundaries** — no authentication, transport, or cancellation behavior is implied unless it is wired
 
 ## Contributing
 

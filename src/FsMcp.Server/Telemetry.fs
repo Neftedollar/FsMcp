@@ -9,8 +9,15 @@ open FsMcp.Core
 /// Compatible with OpenTelemetry, Application Insights, and any ActivityListener.
 module Telemetry =
 
+    let private assemblyVersion =
+        match typeof<ServerConfig>.Assembly.GetName().Version with
+        | null -> "0.0.0"
+        | version ->
+            let build = if version.Build < 0 then 0 else version.Build
+            $"{version.Major}.{version.Minor}.{build}"
+
     /// ActivitySource for FsMcp server operations.
-    let activitySource = new ActivitySource("FsMcp.Server", "1.0.0")
+    let activitySource = new ActivitySource("FsMcp.Server", assemblyVersion)
 
     /// Creates a middleware that traces each MCP request as an Activity (span).
     /// Tags: mcp.method, mcp.status, mcp.error (if error), mcp.duration_ms
@@ -31,7 +38,11 @@ module Telemetry =
                         activity.SetTag("mcp.status", "error") |> ignore
                         activity.SetStatus(ActivityStatusCode.Error) |> ignore
                 return response
-            with ex ->
+            with
+            | :? OperationCanceledException as canceled when ctx.CancellationToken.IsCancellationRequested ->
+                sw.Stop()
+                return raise canceled
+            | ex ->
                 sw.Stop()
                 if not (isNull activity) then
                     activity.SetTag("mcp.status", "exception") |> ignore
@@ -60,7 +71,13 @@ module Telemetry =
     /// Metrics collector that tracks request counts and durations.
     /// Keeps only the last 1000 durations per method to prevent memory leaks.
     type MetricsCollector(?maxDurationsPerMethod: int) =
-        let maxDurations = defaultArg maxDurationsPerMethod 1000
+        let maxDurations =
+            let value = defaultArg maxDurationsPerMethod 1000
+            if value <= 0 then
+                invalidArg
+                    (nameof maxDurationsPerMethod)
+                    "The maximum number of retained durations per method must be positive."
+            value
         let requestCounts = System.Collections.Concurrent.ConcurrentDictionary<string, int ref>()
         let durations = System.Collections.Concurrent.ConcurrentDictionary<string, RingBuffer>()
 

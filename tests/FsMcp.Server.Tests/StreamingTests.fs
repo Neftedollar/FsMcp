@@ -67,6 +67,7 @@ let asyncEnumerableWithTrackedDispose
 // ───────── Typed args ─────────
 
 type CountArgs = { count: int }
+type StrictStreamingArgs = { count: int; enabled: bool }
 
 // ───────── Tests ─────────
 
@@ -76,7 +77,7 @@ let streamingTests =
         testList "StreamingTool.define" [
             testCase "collects all items from stream" <| fun _ ->
                 let td =
-                    StreamingTool.define "counter" "Counts" (fun _args ->
+                    StreamingTool.define "counter" "Counts" (fun _args _ ->
                         asyncEnumerable [
                             Content.text "one"
                             Content.text "two"
@@ -84,7 +85,7 @@ let streamingTests =
                         ])
                     |> unwrap
                 Expect.equal (ToolName.value td.Name) "counter" "name"
-                let result = td.Handler Map.empty |> Async.AwaitTask |> Async.RunSynchronously
+                let result = td.Handler Map.empty CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
                 match result with
                 | Ok items ->
                     Expect.equal items.Length 3 "three items"
@@ -95,10 +96,10 @@ let streamingTests =
 
             testCase "empty stream returns empty list" <| fun _ ->
                 let td =
-                    StreamingTool.define "empty" "Empty" (fun _args ->
+                    StreamingTool.define "empty" "Empty" (fun _args _ ->
                         asyncEnumerable [])
                     |> unwrap
-                let result = td.Handler Map.empty |> Async.AwaitTask |> Async.RunSynchronously
+                let result = td.Handler Map.empty CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
                 match result with
                 | Ok items -> Expect.equal items.Length 0 "empty list"
                 | Error e -> failtest $"unexpected error: %A{e}"
@@ -106,10 +107,10 @@ let streamingTests =
             testCase "stream that throws returns HandlerException" <| fun _ ->
                 let err = System.InvalidOperationException("boom")
                 let td =
-                    StreamingTool.define "failing" "Fails" (fun _args ->
+                    StreamingTool.define "failing" "Fails" (fun _args _ ->
                         asyncEnumerableWithError [ Content.text "before-error" ] err)
                     |> unwrap
-                let result = td.Handler Map.empty |> Async.AwaitTask |> Async.RunSynchronously
+                let result = td.Handler Map.empty CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
                 match result with
                 | Error (HandlerException ex) ->
                     Expect.equal ex.Message "boom" "exception message"
@@ -117,12 +118,12 @@ let streamingTests =
 
             testCase "returns error for empty tool name" <| fun _ ->
                 let result =
-                    StreamingTool.define "" "d" (fun _ -> asyncEnumerable [])
+                    StreamingTool.define "" "d" (fun _ _ -> asyncEnumerable [])
                 Expect.isError result "empty name"
 
             testCase "has no input schema" <| fun _ ->
                 let td =
-                    StreamingTool.define "t" "d" (fun _ -> asyncEnumerable [])
+                    StreamingTool.define "t" "d" (fun _ _ -> asyncEnumerable [])
                     |> unwrap
                 Expect.isNone td.InputSchema "no schema for untyped"
         ]
@@ -130,7 +131,7 @@ let streamingTests =
         testList "StreamingTool.defineTyped" [
             testCase "typed streaming tool collects all items" <| fun _ ->
                 let td =
-                    StreamingTool.defineTyped<CountArgs> "counter" "Counts" (fun args ->
+                    StreamingTool.defineTyped<CountArgs> "counter" "Counts" (fun args _ ->
                         let items = [ for i in 1..args.count -> Content.text $"item-{i}" ]
                         asyncEnumerable items)
                     |> unwrap
@@ -139,7 +140,7 @@ let streamingTests =
                 let args = Map.ofList [
                     "count", JsonDocument.Parse("3").RootElement
                 ]
-                let result = td.Handler args |> Async.AwaitTask |> Async.RunSynchronously
+                let result = td.Handler args CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
                 match result with
                 | Ok items ->
                     Expect.equal items.Length 3 "three items"
@@ -150,31 +151,71 @@ let streamingTests =
 
             testCase "typed streaming with empty result" <| fun _ ->
                 let td =
-                    StreamingTool.defineTyped<CountArgs> "counter" "Counts" (fun args ->
+                    StreamingTool.defineTyped<CountArgs> "counter" "Counts" (fun _ _ ->
                         asyncEnumerable [])
                     |> unwrap
                 let args = Map.ofList [
                     "count", JsonDocument.Parse("0").RootElement
                 ]
-                let result = td.Handler args |> Async.AwaitTask |> Async.RunSynchronously
+                let result = td.Handler args CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
                 match result with
                 | Ok items -> Expect.equal items.Length 0 "empty"
                 | Error e -> failtest $"unexpected error: %A{e}"
 
             testCase "typed streaming returns error for invalid args" <| fun _ ->
                 let td =
-                    StreamingTool.defineTyped<CountArgs> "counter" "Counts" (fun args ->
+                    StreamingTool.defineTyped<CountArgs> "counter" "Counts" (fun _ _ ->
                         asyncEnumerable [ Content.text "ok" ])
                     |> unwrap
                 let args = Map.ofList [
                     "count", JsonDocument.Parse("\"not-a-number\"").RootElement
                 ]
-                let result = td.Handler args |> Async.AwaitTask |> Async.RunSynchronously
-                Expect.isError result "invalid args"
+                let invalid =
+                    try
+                        td.Handler args CancellationToken.None
+                        |> fun pending -> pending.GetAwaiter().GetResult()
+                        |> ignore
+                        false
+                    with :? ModelContextProtocol.McpProtocolException -> true
+                Expect.isTrue invalid "invalid args"
+
+            testCase "typed streaming rejects coercible JSON strings without invocation" <| fun _ ->
+                let mutable invocationCount = 0
+                let td =
+                    StreamingTool.defineTyped<StrictStreamingArgs> "strict" "Strict JSON" (fun _ _ ->
+                        invocationCount <- invocationCount + 1
+                        asyncEnumerable [])
+                    |> unwrap
+                let cases = [
+                    "numeric string",
+                    Map.ofList [
+                        "count", JsonSerializer.SerializeToElement "42"
+                        "enabled", JsonSerializer.SerializeToElement true
+                    ]
+                    "boolean string",
+                    Map.ofList [
+                        "count", JsonSerializer.SerializeToElement 42
+                        "enabled", JsonSerializer.SerializeToElement "true"
+                    ]
+                ]
+                for caseName, arguments in cases do
+                    let error =
+                        try
+                            td.Handler arguments CancellationToken.None
+                            |> fun pending -> pending.GetAwaiter().GetResult()
+                            |> ignore
+                            failtestf "Expected %s to fail" caseName
+                        with :? ModelContextProtocol.McpProtocolException as caught -> caught
+                    Expect.equal
+                        error.ErrorCode
+                        ModelContextProtocol.McpErrorCode.InvalidParams
+                        $"{caseName} code"
+                    Expect.equal error.Message "Invalid tool arguments." $"{caseName} message"
+                Expect.equal invocationCount 0 "strict deserialization rejects before streaming starts"
 
             testCase "returns error for empty tool name" <| fun _ ->
                 let result =
-                    StreamingTool.defineTyped<CountArgs> "" "d" (fun _ -> asyncEnumerable [])
+                    StreamingTool.defineTyped<CountArgs> "" "d" (fun _ _ -> asyncEnumerable [])
                 Expect.isError result "empty name"
         ]
 
@@ -188,9 +229,9 @@ let streamingTests =
 
                 // StreamingTool.define wraps collectAsync; the exception surfaces as HandlerException
                 let td =
-                    StreamingTool.define "throw-on-next" "Throws" (fun _args -> enumerable)
+                    StreamingTool.define "throw-on-next" "Throws" (fun _args _ -> enumerable)
                     |> unwrap
-                let result = td.Handler Map.empty |> Async.AwaitTask |> Async.RunSynchronously
+                let result = td.Handler Map.empty CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
                 // The exception must propagate
                 match result with
                 | Error (HandlerException ex) ->
@@ -205,12 +246,14 @@ let streamingTests =
                 let config = mcpServer {
                     name "StreamServer"
                     version "1.0.0"
-                    tool (StreamingTool.define "stream" "Streams" (fun _ ->
+                    tool (StreamingTool.define "stream" "Streams" (fun _ _ ->
                         asyncEnumerable [ Content.text "hello" ]) |> unwrap)
-                    useStdio
                 }
                 Expect.equal (List.length config.Tools) 1 "one tool"
-                let result = config.Tools.[0].Handler Map.empty |> Async.AwaitTask |> Async.RunSynchronously
+                let result =
+                    config.Tools.[0].Handler Map.empty CancellationToken.None
+                    |> Async.AwaitTask
+                    |> Async.RunSynchronously
                 match result with
                 | Ok [ Text t ] -> Expect.equal t "hello" "streamed text"
                 | other -> failtest $"unexpected: %A{other}"
@@ -219,9 +262,8 @@ let streamingTests =
                 let config = mcpServer {
                     name "TypedStreamServer"
                     version "1.0.0"
-                    tool (StreamingTool.defineTyped<CountArgs> "counter" "Counts" (fun args ->
+                    tool (StreamingTool.defineTyped<CountArgs> "counter" "Counts" (fun args _ ->
                         asyncEnumerable [ for i in 1..args.count -> Content.text $"item-{i}" ]) |> unwrap)
-                    useStdio
                 }
                 Expect.equal (List.length config.Tools) 1 "one tool"
                 Expect.isSome config.Tools.[0].InputSchema "has schema"

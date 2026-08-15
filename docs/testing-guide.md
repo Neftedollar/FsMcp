@@ -30,7 +30,8 @@ open FsMcp.Testing
 let config = mcpServer {
     name "TestServer"
     version "1.0.0"
-    tool (Tool.define "echo" "Echoes input" (fun args ->
+    tool (Tool.define "echo" "Echoes input" (fun args cancellationToken ->
+        cancellationToken.ThrowIfCancellationRequested()
         let msg =
             args
             |> Map.tryFind "message"
@@ -38,7 +39,6 @@ let config = mcpServer {
             |> Option.defaultValue "(none)"
         task { return Ok [ Content.text $"Echo: {msg}" ] })
     |> unwrapResult)
-    useStdio
 }
 
 // Call the tool
@@ -52,6 +52,13 @@ let result =
 ```
 
 Returns `Error (ToolNotFound tn)` if the tool name does not exist in the config.
+
+Use `TestServer.callToolWithCancellation`,
+`TestServer.readResourceWithCancellation`, or
+`TestServer.getPromptWithCancellation` when a test must prove that the exact
+request token reaches a handler. Caller cancellation is rethrown as
+`OperationCanceledException` with the caller's token; it is not converted into
+an `McpError`.
 
 ### `TestServer.readResource`
 
@@ -197,18 +204,19 @@ let calcServer = mcpServer {
     name "Calculator"
     version "1.0.0"
 
-    tool (TypedTool.define<CalcArgs> "add" "Add two numbers" (fun args -> task {
+    tool (TypedTool.define<CalcArgs> "add" "Add two numbers" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         return Ok [ Content.text $"{args.a + args.b}" ]
     }) |> unwrapResult)
 
-    tool (TypedTool.define<CalcArgs> "divide" "Divide a by b" (fun args -> task {
+    tool (TypedTool.define<CalcArgs> "divide" "Divide a by b" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         if args.b = 0.0 then
             return Error (TransportError "Division by zero")
         else
             return Ok [ Content.text $"{args.a / args.b}" ]
     }) |> unwrapResult)
 
-    useStdio
 }
 
 let jsonEl (s: string) = JsonDocument.Parse(s).RootElement

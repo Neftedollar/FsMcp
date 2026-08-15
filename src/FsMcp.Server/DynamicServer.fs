@@ -3,49 +3,46 @@ namespace FsMcp.Server
 open FsMcp.Core
 open FsMcp.Core.Validation
 
-/// A mutable server configuration that supports adding/removing tools at runtime.
-[<NoComparison; NoEquality>]
-type DynamicServerConfig = {
-    mutable Config: ServerConfig
-    OnToolsChanged: Event<unit>
-}
+/// Retained only as an opaque migration marker. FsMcp 1.x dynamic registrations
+/// never updated the live SDK registry, so instances cannot be constructed in 2.0.
+[<Sealed>]
+type DynamicServerConfig private () = class end
 
-/// Functions for managing a dynamic server with hot-reload tool support.
+/// Functions for managing the legacy dynamic server surface.
 module DynamicServer =
-    /// Create a dynamic server from an initial config.
+    let private unavailableMessage =
+        "DynamicServer changed only an in-memory ServerConfig in FsMcp 1.x; live SDK registrations never observed those mutations. The deceptive behavior was removed in 2.0. Rebuild and replace the composed server registration instead."
+
+    [<System.Obsolete("DynamicServer did not update a live MCP server and now fails closed. Rebuild and replace the composed server registration.")>]
     let create (config: ServerConfig) : DynamicServerConfig =
-        { Config = config; OnToolsChanged = Event<unit>() }
+        ignore config
+        raise (FsMcpConfigException unavailableMessage)
 
-    /// Add a tool at runtime. Fails if a tool with the same name already exists.
+    [<System.Obsolete("DynamicServer did not update a live MCP server and now fails closed. Rebuild and replace the composed server registration.")>]
     let addTool (tool: ToolDefinition) (server: DynamicServerConfig) =
-        let newTools = server.Config.Tools @ [tool]
-        // Validate no duplicates
-        let toolNames = newTools |> List.map (fun t -> ToolName.value t.Name)
-        let duplicate =
-            toolNames
-            |> List.groupBy id
-            |> List.tryFind (fun (_, group) -> List.length group > 1)
-        match duplicate with
-        | Some (name, _) ->
-            raise (FsMcpConfigException $"Cannot add tool: a tool named '{name}' already exists. Remove it first with DynamicServer.removeTool.")
-        | None ->
-            server.Config <- { server.Config with Tools = newTools }
-            server.OnToolsChanged.Trigger()
+        ignore tool
+        ignore server
+        raise (FsMcpConfigException unavailableMessage)
 
-    /// Remove a tool by name at runtime.
+    [<System.Obsolete("DynamicServer did not update a live MCP server and now fails closed. Rebuild and replace the composed server registration.")>]
     let removeTool (name: ToolName) (server: DynamicServerConfig) =
-        let newTools = server.Config.Tools |> List.filter (fun t -> t.Name <> name)
-        server.Config <- { server.Config with Tools = newTools }
-        server.OnToolsChanged.Trigger()
+        ignore name
+        ignore server
+        raise (FsMcpConfigException unavailableMessage)
 
-    /// Get current tool count.
-    let toolCount (server: DynamicServerConfig) = List.length server.Config.Tools
+    [<System.Obsolete("DynamicServer did not update a live MCP server and now fails closed. Rebuild and replace the composed server registration.")>]
+    let toolCount (server: DynamicServerConfig) : int =
+        ignore server
+        raise (FsMcpConfigException unavailableMessage)
 
-    /// Subscribe to tool list changes. Returns an IDisposable; caller must dispose
-    /// when the subscriber's owner goes out of scope to avoid event-handler retention.
+    [<System.Obsolete("DynamicServer did not update a live MCP server and now fails closed. Rebuild and replace the composed server registration.")>]
     let subscribeToolsChanged (handler: unit -> unit) (server: DynamicServerConfig) : System.IDisposable =
-        server.OnToolsChanged.Publish |> Observable.subscribe (fun () -> handler ())
+        ignore handler
+        ignore server
+        raise (FsMcpConfigException unavailableMessage)
 
-    /// Subscribe to tool list changes.
-    [<System.Obsolete("Use subscribeToolsChanged for a disposable subscription. The IEvent.Add returned by this function does not support unsubscription.")>]
-    let onToolsChanged (server: DynamicServerConfig) = server.OnToolsChanged.Publish
+    /// Retained only as a fail-closed migration surface; no live change event exists.
+    [<System.Obsolete("DynamicServer did not update a live MCP server and now fails closed. Rebuild and replace the composed server registration.")>]
+    let onToolsChanged (server: DynamicServerConfig) : IEvent<unit> =
+        ignore server
+        raise (FsMcpConfigException unavailableMessage)

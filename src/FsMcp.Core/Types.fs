@@ -1,6 +1,7 @@
 namespace FsMcp.Core
 
 open System.Text.Json
+open System.Threading
 open System.Threading.Tasks
 open FsMcp.Core.Validation
 
@@ -54,7 +55,9 @@ type ToolDefinition = {
     Name: ToolName
     Description: string
     InputSchema: JsonElement option
-    Handler: Map<string, JsonElement> -> Task<Result<Content list, McpError>>
+    /// Execute the tool. The transport-supplied cancellation token is authoritative
+    /// for the lifetime of the MCP request.
+    Handler: Map<string, JsonElement> -> CancellationToken -> Task<Result<Content list, McpError>>
 }
 
 /// A resource definition with a URI, name, description, MIME type, and handler.
@@ -64,7 +67,8 @@ type ResourceDefinition = {
     Name: string
     Description: string option
     MimeType: MimeType option
-    Handler: Map<string, string> -> Task<Result<ResourceContents, McpError>>
+    /// Read the resource. URI-template values are supplied in the argument map.
+    Handler: Map<string, string> -> CancellationToken -> Task<Result<ResourceContents, McpError>>
 }
 
 /// An argument definition for a prompt.
@@ -80,8 +84,21 @@ type PromptDefinition = {
     Name: PromptName
     Description: string option
     Arguments: PromptArgument list
-    Handler: Map<string, string> -> Task<Result<McpMessage list, McpError>>
+    /// Render the prompt using the transport-supplied request cancellation token.
+    Handler: Map<string, string> -> CancellationToken -> Task<Result<McpMessage list, McpError>>
 }
+
+/// Small adapters for composing MCP handlers without hiding cancellation at the
+/// definition site.
+module Handler =
+    /// Adapt a handler that genuinely has no cancellable work to the uniform MCP
+    /// handler shape. Call sites must opt into ignoring cancellation explicitly.
+    let ignoreCancellation
+        (handler: 'input -> Task<'output>)
+        (input: 'input)
+        (_: CancellationToken)
+        : Task<'output> =
+        handler input
 
 /// Empty module to ensure this file compiles as a valid F# source.
 module Types =

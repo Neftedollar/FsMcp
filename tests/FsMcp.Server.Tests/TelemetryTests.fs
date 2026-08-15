@@ -105,6 +105,35 @@ let telemetryTracingTests =
                 let duration = activity.GetTagItem("mcp.duration_ms")
                 Expect.isNotNull duration "mcp.duration_ms should be set"
             )
+
+        testCase "preserves the caller cancellation exception exactly" <| fun _ ->
+            use cancellation = new CancellationTokenSource()
+            cancellation.Cancel()
+            let expected = OperationCanceledException(cancellation.Token)
+            let context = {
+                mkContext "test/cancellation" with
+                    CancellationToken = cancellation.Token
+            }
+            let handler _ = Task.FromException<McpResponse>(expected)
+            let actual =
+                try
+                    Telemetry.tracing () context handler
+                    |> fun pending -> pending.GetAwaiter().GetResult()
+                    |> ignore
+                    failtest "Expected request cancellation"
+                with :? OperationCanceledException as canceled -> canceled
+            Expect.isTrue
+                (obj.ReferenceEquals(actual, expected))
+                "tracing rethrows the original caller cancellation exception"
+
+        testCase "uses the current server assembly three-part version" <| fun _ ->
+            let expected =
+                match typeof<ServerConfig>.Assembly.GetName().Version with
+                | null -> "0.0.0"
+                | version ->
+                    let build = if version.Build < 0 then 0 else version.Build
+                    $"{version.Major}.{version.Minor}.{build}"
+            Expect.equal Telemetry.activitySource.Version expected "ActivitySource version"
     ]
 
 [<Tests>]
@@ -149,6 +178,12 @@ let telemetryMetricsTests =
             Expect.equal (Seq.toList log) ["before"; "after"] "log middleware ran"
             let counts = collector.RequestCounts
             Expect.equal (Map.find "tools/call" counts) 1 "collector counted request"
+
+        testCase "rejects non-positive retention bounds at construction" <| fun _ ->
+            for value in [ 0; -1 ] do
+                Expect.throwsT<ArgumentException>
+                    (fun () -> Telemetry.MetricsCollector(value) |> ignore)
+                    $"{value} is not a valid retention bound"
     ]
 
 [<Tests>]

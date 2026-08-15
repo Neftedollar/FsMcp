@@ -1,3 +1,5 @@
+#nowarn "44"
+
 module FsMcp.Sampling.Tests.SamplingTests
 
 open Expecto
@@ -82,54 +84,11 @@ let samplingTests =
                 Expect.isOk result "mock succeeds"
         ]
 
-        testList "SamplingTool.define" [
-            testCase "creates a tool that uses sampling in handler" <| fun _ ->
-                let td =
-                    SamplingTool.define<SummarizeArgs> "summarize" "Summarizes text via LLM"
-                        (fun ctx args -> task {
-                            let req = SamplingRequest.simple $"Summarize: {args.text}" 200
-                            let! samplingResult = ctx.Sample req
-                            match samplingResult with
-                            | Ok r ->
-                                match r.Message.Content with
-                                | Text t -> return Ok [ Content.text t ]
-                                | _ -> return Ok [ Content.text "no text" ]
-                            | Error SamplingNotSupported ->
-                                return Ok [ Content.text $"Fallback: {args.text.[..20]}..." ]
-                            | Error e ->
-                                return Error (TransportError $"Sampling failed: %A{e}")
-                        })
-                    |> Result.defaultWith (fun e -> failtest $"%A{e}")
-
-                Expect.equal (ToolName.value td.Name) "summarize" "name"
-                Expect.isSome td.InputSchema "has schema"
-
-                // Handler uses noOp context → falls back
-                let args = Map.ofList [
-                    "text", JsonDocument.Parse("\"This is a long text that needs summarizing\"").RootElement
-                ]
-                let result = td.Handler args |> Async.AwaitTask |> Async.RunSynchronously
-                match result with
-                | Ok [ Text t ] -> Expect.stringContains t "Fallback" "uses fallback"
-                | other -> failtest $"unexpected: %A{other}"
-
-            testCase "returns error for empty name" <| fun _ ->
-                let result =
-                    SamplingTool.define<SummarizeArgs> "" "desc"
-                        (fun _ _ -> Task.FromResult(Ok []))
-                Expect.isError result "empty name"
-
-            testCase "schema marks optional fields correctly" <| fun _ ->
-                let td =
-                    SamplingTool.define<SummarizeArgs> "s" "d"
-                        (fun _ _ -> Task.FromResult(Ok []))
-                    |> Result.defaultWith (fun e -> failtest $"%A{e}")
-                let schema = td.InputSchema.Value
-                let required =
-                    match schema.TryGetProperty("required") with
-                    | true, arr -> arr.EnumerateArray() |> Seq.map _.GetString() |> Set.ofSeq
-                    | _ -> Set.empty
-                Expect.isTrue (required.Contains "text") "text required"
-                Expect.isFalse (required.Contains "maxLength") "maxLength optional"
-        ]
+        testCase "SamplingTool.define fails closed instead of injecting a no-op client" <| fun _ ->
+            Expect.throwsT<FsMcp.Server.FsMcpConfigException>
+                (fun () ->
+                    SamplingTool.define<SummarizeArgs> "summarize" "Summarizes text"
+                        (fun _ _ -> Task.FromResult(Ok [ Content.text "unused" ]))
+                    |> ignore)
+                "sampling requires an actual request-scoped MCP server"
     ]

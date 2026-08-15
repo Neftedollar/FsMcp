@@ -68,14 +68,18 @@ module Validation =
         let value (ResourceUri v) = v
 
         /// Create a ResourceUri from a string. Returns Error for null, empty, or invalid URI strings.
-        /// The URI must be an absolute URI with a scheme.
+        /// The URI must be an absolute URI with a scheme. Hierarchical and
+        /// opaque forms are both valid (for example https://, file://, urn:, or mailto:).
         let create (s: string) : Result<ResourceUri, ValidationError> =
             if isNullOrWhiteSpace s then
                 Error (EmptyValue "ResourceUri")
             else
-                match System.Uri.TryCreate(s, System.UriKind.Absolute) with
-                | true, uri when not (System.String.IsNullOrEmpty uri.Scheme)
-                              && s.Contains("://") ->
+                let separator = s.IndexOf ':'
+                let hasExplicitScheme =
+                    separator > 0
+                    && System.Uri.CheckSchemeName(s.Substring(0, separator))
+                match hasExplicitScheme, System.Uri.TryCreate(s, System.UriKind.Absolute) with
+                | true, (true, uri) when not (System.String.IsNullOrEmpty uri.Scheme) ->
                     Ok (ResourceUri s)
                 | _ ->
                     Error (InvalidFormat ("ResourceUri", s, "valid absolute URI with scheme (e.g., https://example.com/resource)"))

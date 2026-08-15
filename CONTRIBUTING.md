@@ -5,10 +5,11 @@ Thanks for your interest in FsMcp! Every contribution matters.
 ## Quick Start
 
 ```bash
-git clone https://github.com/FsMcp/FsMcp.git
+git clone https://github.com/Neftedollar/FsMcp.git
 cd FsMcp
-dotnet build
-dotnet test
+bash scripts/restore-locked.sh
+dotnet build FsMcp.slnx --configuration Release --no-restore --maxcpucount:1 -p:BuildInParallel=false -p:UseSharedCompilation=false
+dotnet test FsMcp.slnx --configuration Release --no-build --no-restore --maxcpucount:1 -p:BuildInParallel=false -p:UseSharedCompilation=false
 ```
 
 ## Development Rules
@@ -54,7 +55,7 @@ Open an issue describing:
 1. Fork and create a feature branch
 2. Write tests first (they must fail before your implementation)
 3. Keep PRs focused — one feature per PR
-4. Run `dotnet test` — all 308+ tests must pass
+4. Run the locked restore, deterministic build, full tests, examples, and release-verifier self-tests
 5. Update CHANGELOG.md
 
 ### Adding a New Module
@@ -70,6 +71,21 @@ Open an issue describing:
 - `module` + `let` functions over methods
 - Pipe-friendly: data-last parameter order
 - Meaningful test names: `"returns error when tool name is empty"`
+
+## Dependency and release policy
+
+- Install the exact SDK selected by `global.json` (10.0.400). Roll-forward is disabled.
+- Do not hand-edit `packages.lock.json`. After an intentional package change,
+  run `bash scripts/generate-lockfiles.sh`, review every lock diff, then prove
+  `bash scripts/restore-locked.sh` works.
+- Package versions are centralized in `Directory.Build.props`; keep public
+  `FSharp.Core` as a lower bound so consumers may select a compatible newer version.
+- Run `bash scripts/build-examples.sh` and
+  `python3 scripts/test_release_verifiers.py` before opening a release change.
+- For documentation changes, run `npm ci`, `npm run audit:ci`,
+  `npm run typecheck`, and `npm run build` inside `website/`.
+- Never broaden an audit exception merely to make CI green. Review the exact
+  advisory and dependency closure, document the decision, and keep it expiring.
 
 ## Questions?
 

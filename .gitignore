@@ -2,6 +2,8 @@
 bin/
 obj/
 nupkgs/
+__pycache__/
+*.py[cod]
 *.nupkg
 
 # IDE

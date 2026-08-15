@@ -1,7 +1,6 @@
 namespace FsMcp.Server
 
 open System.Text.Json
-open System.Text.Json.Nodes
 open System.Threading
 open System.Threading.Tasks
 open FsMcp.Core
@@ -50,56 +49,38 @@ module Notifications =
             CancellationToken = CancellationToken.None
         }
 
-    /// Per-tool handler storage. Each ContextualTool.define call returns a
-    /// ToolDefinition whose Handler closes over its own context-aware handler,
-    /// avoiding a process-global registry that causes test isolation issues.
-
-    /// A contextual tool definition that captures its context-aware handler
-    /// in a closure (no global registry — test-safe).
+    /// Low-level storage for manually constructed contextual handlers in tests.
+    /// This type is not connected to the MCP transport or SDK request context.
     [<NoComparison; NoEquality>]
     type ContextualToolHandle = {
-        /// The ToolDefinition for registration with the server.
+        /// A manually supplied definition; this field does not add transport wiring.
         Definition: ToolDefinition
-        /// Invoke with a specific HandlerContext (for testing or runtime wiring).
+        /// Invoke with an explicit test context; no context is obtained from the transport.
         InvokeWithContext: HandlerContext -> Map<string, JsonElement> -> Task<Result<Content list, McpError>>
     }
 
     /// Contextual tool definitions that receive a HandlerContext for sending notifications.
     module ContextualTool =
 
-        let private deserializerOptions = JsonSerializerOptions(PropertyNameCaseInsensitive = true)
+        let private unavailableMessage =
+            "ContextualTool transport wiring was never implemented in FsMcp 1.x and no longer falls back to no-op notifications. Use invokeWithContext only in an explicit/manual test context; production support requires a future SDK RequestContext-based API."
 
-        /// Define a tool whose handler receives a HandlerContext for sending notifications.
-        /// Returns a ContextualToolHandle with both the ToolDefinition and a way to invoke with context.
+        /// Retained as a fail-closed migration entry point. It never constructs a
+        /// transport-backed handle; production notification support requires a
+        /// future SDK request-context integration.
+        [<System.Obsolete("ContextualTool transport wiring was never implemented and now fails closed. Use explicit SDK RequestContext APIs for production notifications.")>]
         let define<'TArgs>
             (name: string)
             (description: string)
             (handler: HandlerContext -> 'TArgs -> Task<Result<Content list, McpError>>)
             : Result<ContextualToolHandle, ValidationError> =
-            let schema = SchemaGen.generateSchema<'TArgs>()
+            ignore name
+            ignore description
+            ignore handler
+            raise (FsMcpConfigException unavailableMessage)
 
-            let contextAwareHandler (ctx: HandlerContext) (args: Map<string, JsonElement>) = task {
-                try
-                    let jsonObj = JsonObject()
-                    for kv in args do
-                        jsonObj.[kv.Key] <- JsonNode.Parse(kv.Value.GetRawText())
-                    let json = jsonObj.ToJsonString()
-                    let typedArgs = JsonSerializer.Deserialize<'TArgs>(json, deserializerOptions)
-                    return! handler ctx typedArgs
-                with ex ->
-                    return Result.Error (HandlerException ex)
-            }
-
-            let rawHandler (args: Map<string, JsonElement>) =
-                contextAwareHandler HandlerContext.noOp args
-
-            match ToolName.create name with
-            | Ok tn ->
-                let td = { Name = tn; Description = description; InputSchema = Some schema; Handler = rawHandler }
-                Ok { Definition = td; InvokeWithContext = contextAwareHandler }
-            | Result.Error e -> Result.Error e
-
-        /// Invoke a contextual tool with a specific HandlerContext.
+        /// Invoke a manually constructed handle with an explicit test context.
+        /// This helper does not provide MCP transport or SDK request-context wiring.
         let invokeWithContext
             (ctx: HandlerContext)
             (handle: ContextualToolHandle)

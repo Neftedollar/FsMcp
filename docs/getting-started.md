@@ -9,14 +9,14 @@ index: 0
 
 ## Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) (10.0.100 or later)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) (10.0.400)
 - An editor with F# support (VS Code + Ionide, Rider, or Visual Studio)
 
 Verify your SDK:
 
 ```bash
 dotnet --version
-# 10.0.100 or higher
+# 10.0.400
 ```
 
 ## Install packages
@@ -35,8 +35,8 @@ Other packages you may need later:
 dotnet add package FsMcp.Client       # typed client wrapper
 dotnet add package FsMcp.Testing      # test helpers + FsCheck generators
 dotnet add package FsMcp.TaskApi      # FsToolkit.ErrorHandling pipeline
-dotnet add package FsMcp.Server.Http  # HTTP/SSE transport (opt-in ASP.NET)
-dotnet add package FsMcp.Sampling     # LLM sampling from server tools
+dotnet add package FsMcp.Server.Http  # Streamable HTTP (opt-in ASP.NET)
+dotnet add package FsMcp.Sampling     # sampling types and test helpers
 ```
 
 ## Hello world: minimal MCP server
@@ -53,11 +53,10 @@ let server = mcpServer {
     name "HelloServer"
     version "1.0.0"
 
-    tool (TypedTool.define<GreetArgs> "greet" "Say hello" (fun args -> task {
+    tool (TypedTool.define<GreetArgs> "greet" "Say hello" (fun args cancellationToken -> task {
+        cancellationToken.ThrowIfCancellationRequested()
         return Ok [ Content.text $"Hello, {args.name}!" ]
     }) |> unwrapResult)
-
-    useStdio
 }
 
 [<EntryPoint>]
@@ -94,8 +93,9 @@ Restart Claude Desktop. You should see the "greet" tool available. Ask Claude to
 ## Where to go next
 
 - [Server Guide](server-guide.md) -- tools, resources, prompts, the `mcpServer { }` CE in depth
-- [Middleware Guide](middleware-guide.md) -- logging, auth, validation, telemetry
+- [Middleware Migration](middleware-guide.md) -- SDK filters and ASP.NET Core middleware
+- [Enterprise Authorization](enterprise-managed-authorization.md) -- managed client identity and server protection
 - [Client Guide](client-guide.md) -- connect to MCP servers from F#
 - [Testing Guide](testing-guide.md) -- test handlers without transport, property testing
-- [Advanced](advanced.md) -- streaming, contextual tools, dynamic servers, sampling
+- [Advanced](advanced.md) -- streaming, subscriptions, and supported SDK extension points
 - [Types Reference](types-reference.md) -- every domain type and smart constructor

@@ -97,7 +97,7 @@ let httpSubscriptionDisconnectTests =
                         Name = "live"
                         Description = None
                         MimeType = None
-                        Handler = fun _ -> task { return Ok (TextResource (uri, mime, "live data")) }
+                        Handler = fun _ _ -> task { return Ok (TextResource (uri, mime, "live data")) }
                     }
 
                     let config =
@@ -105,7 +105,6 @@ let httpSubscriptionDisconnectTests =
                             name "HttpDisconnectTest"
                             version "1.0"
                             resource resourceDef
-                            useStdio
                         }
 
                     let (app, registryOpt) = buildTestApp config
@@ -188,7 +187,7 @@ let httpSubscriptionDisconnectTests =
                         Name = "shared"
                         Description = None
                         MimeType = None
-                        Handler = fun _ -> task { return Ok (TextResource (uri, mime, "shared data")) }
+                        Handler = fun _ _ -> task { return Ok (TextResource (uri, mime, "shared data")) }
                     }
 
                     let config =
@@ -196,7 +195,6 @@ let httpSubscriptionDisconnectTests =
                             name "HttpMultiClientSubscribeTest"
                             version "1.0"
                             resource resourceDef
-                            useStdio
                         }
 
                     let (app, registryOpt) = buildTestApp config

@@ -1,7 +1,9 @@
 namespace FsMcp.Server
 
+open System
 open System.Text.Json
 open System.Text.Json.Nodes
+open System.Threading
 open System.Threading.Tasks
 open FsMcp.Core
 open FsMcp.Core.Validation
@@ -9,26 +11,41 @@ open FsMcp.Core.Validation
 /// A pre-built typed handler with its associated JSON schema.
 [<NoComparison; NoEquality>]
 type TypedHandlerInfo = {
-    RawHandler: Map<string, JsonElement> -> Task<Result<Content list, McpError>>
+    RawHandler: Map<string, JsonElement> -> CancellationToken -> Task<Result<Content list, McpError>>
     Schema: JsonElement
 }
 
 /// Helper to create a TypedHandlerInfo from a typed handler function.
 module TypedHandler =
-    let private deserializerOptions = JsonSerializerOptions(PropertyNameCaseInsensitive = true)
+    let private deserializerOptions = TypedDeserializer.strictToolOptions ()
 
     /// Create a TypedHandlerInfo that auto-generates the JSON schema from the record type.
-    let create<'TArgs> (handler: 'TArgs -> Task<Result<Content list, McpError>>) : TypedHandlerInfo =
+    let create<'TArgs>
+        (handler: 'TArgs -> CancellationToken -> Task<Result<Content list, McpError>>)
+        : TypedHandlerInfo =
         let schema = SchemaGen.generateSchema<'TArgs>()
-        let rawHandler (args: Map<string, JsonElement>) = task {
-            try
-                let jsonObj = JsonObject()
-                for kv in args do
-                    jsonObj.[kv.Key] <- JsonNode.Parse(kv.Value.GetRawText())
-                let typedArgs = JsonSerializer.Deserialize<'TArgs>(jsonObj.ToJsonString(), deserializerOptions)
-                return! handler typedArgs
-            with ex ->
-                return Error (HandlerException ex)
+        let rawHandler (args: Map<string, JsonElement>) (cancellationToken: CancellationToken) = task {
+            let deserialized =
+                if not (TypedDeserializer.hasRequiredArguments schema args) then
+                    Error(TypedDeserializer.invalidArguments "tool")
+                else
+                    try
+                        let jsonObject = JsonObject()
+                        for keyValue in args do
+                            jsonObject.[keyValue.Key] <- JsonNode.Parse(keyValue.Value.GetRawText())
+                        Ok(JsonSerializer.Deserialize<'TArgs>(jsonObject.ToJsonString(), deserializerOptions))
+                    with :? JsonException ->
+                        Error(TypedDeserializer.invalidArguments "tool")
+
+            match deserialized with
+            | Error error -> return raise error
+            | Ok typedArgs ->
+                try
+                    return! handler typedArgs cancellationToken
+                with
+                | :? OperationCanceledException when cancellationToken.IsCancellationRequested ->
+                    return raise (OperationCanceledException(cancellationToken))
+                | error -> return Error(HandlerException error)
         }
         { RawHandler = rawHandler; Schema = schema }
 
@@ -37,7 +54,7 @@ module TypedHandler =
 type ToolBuilderState = {
     Name: string option
     Description: string option
-    Handler: (Map<string, JsonElement> -> Task<Result<Content list, McpError>>) option
+    Handler: (Map<string, JsonElement> -> CancellationToken -> Task<Result<Content list, McpError>>) option
     InputSchema: JsonElement option
 }
 
@@ -54,7 +71,7 @@ type ToolCEBuilder() =
     [<CustomOperation("description")>]
     member _.Description(state: ToolBuilderState, d: string) = { state with Description = Some d }
 
-    /// Set a raw handler (Map<string, JsonElement> -> Task<Result<Content list, McpError>>).
+    /// Set a cancellation-aware raw handler.
     [<CustomOperation("handler")>]
     member _.Handler(state: ToolBuilderState, h) = { state with Handler = Some h }
 
@@ -74,7 +91,7 @@ type ToolCEBuilder() =
         let handler =
             state.Handler
             |> Option.defaultWith (fun () ->
-                raise (FsMcpConfigException "Tool handler is required. Add 'handler (fun args -> ...)' or 'typedHandler (TypedHandler.create<Args> ...)' to your mcpTool { } block."))
+                raise (FsMcpConfigException "Tool handler is required. Add 'handler (fun args cancellationToken -> ...)' or 'typedHandler (TypedHandler.create<Args> ...)' to your mcpTool { } block."))
         let tn =
             ToolName.create name
             |> Result.defaultWith (fun e ->

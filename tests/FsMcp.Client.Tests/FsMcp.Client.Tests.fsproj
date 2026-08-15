@@ -10,12 +10,14 @@
 
   <ItemGroup>
     <Compile Include="McpClientTests.fs" />
+    <Compile Include="EnterpriseManagedAuthorizationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/FsMcp.Client/FsMcp.Client.fsproj" />
     <ProjectReference Include="../../src/FsMcp.Core/FsMcp.Core.fsproj" />
+    <ProjectReference Include="../../src/FsMcp.Server/FsMcp.Server.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

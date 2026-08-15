@@ -16,7 +16,7 @@ let handlersTests =
         testList "Tool.define" [
             testCase "creates a valid ToolDefinition from valid name" <| fun _ ->
                 let td =
-                    Tool.define "echo" "Echoes input" (fun _ ->
+                    Tool.define "echo" "Echoes input" (fun _ _ ->
                         System.Threading.Tasks.Task.FromResult(Ok [ Content.text "hello" ]))
                     |> unwrap
                 Expect.equal (ToolName.value td.Name) "echo" "name"
@@ -24,18 +24,18 @@ let handlersTests =
 
             testCase "returns error for empty name" <| fun _ ->
                 let result =
-                    Tool.define "" "desc" (fun _ ->
+                    Tool.define "" "desc" (fun _ _ ->
                         System.Threading.Tasks.Task.FromResult(Ok []))
                 Expect.isError result "empty name should fail"
 
             testCase "handler can be invoked and returns results" <| fun _ ->
                 let td =
-                    Tool.define "greet" "Greets" (fun _ ->
+                    Tool.define "greet" "Greets" (fun _ _ ->
                         System.Threading.Tasks.Task.FromResult(
                             Ok [ Content.text "Hello!"; Content.text "World!" ]))
                     |> unwrap
                 let output =
-                    td.Handler Map.empty
+                    td.Handler Map.empty System.Threading.CancellationToken.None
                     |> Async.AwaitTask |> Async.RunSynchronously
                 match output with
                 | Ok contents -> Expect.equal (List.length contents) 2 "two items"
@@ -45,7 +45,7 @@ let handlersTests =
         testList "Resource.define" [
             testCase "creates a valid ResourceDefinition from valid URI" <| fun _ ->
                 let rd =
-                    Resource.define "file:///tmp/test.txt" "Test File" (fun _ ->
+                    Resource.define "file:///tmp/test.txt" "Test File" (fun _ _ ->
                         let uri = ResourceUri.create "file:///tmp/test.txt" |> unwrap
                         let mime = MimeType.create "text/plain" |> unwrap
                         System.Threading.Tasks.Task.FromResult(
@@ -56,7 +56,7 @@ let handlersTests =
 
             testCase "returns error for invalid URI" <| fun _ ->
                 let result =
-                    Resource.define "not a uri" "Bad" (fun _ ->
+                    Resource.define "not a uri" "Bad" (fun _ _ ->
                         System.Threading.Tasks.Task.FromResult(
                             Error (TransportError "unused")))
                 Expect.isError result "invalid URI should fail"
@@ -67,7 +67,7 @@ let handlersTests =
                 let pd =
                     Prompt.define "summarize"
                         [ { Name = "topic"; Description = Some "topic"; Required = true } ]
-                        (fun _ ->
+                        (fun _ _ ->
                             System.Threading.Tasks.Task.FromResult(
                                 Ok [ { Role = Assistant; Content = Content.text "Summary" } ]))
                     |> unwrap
@@ -76,7 +76,7 @@ let handlersTests =
 
             testCase "returns error for empty name" <| fun _ ->
                 let result =
-                    Prompt.define "" [] (fun _ ->
+                    Prompt.define "" [] (fun _ _ ->
                         System.Threading.Tasks.Task.FromResult(Ok []))
                 Expect.isError result "empty name should fail"
         ]

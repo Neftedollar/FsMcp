@@ -1,7 +1,9 @@
 module FsMcp.Testing.Tests.TestServerTests
 
 open Expecto
+open System
 open System.Text.Json
+open System.Threading
 open System.Threading.Tasks
 open FsMcp.Core
 open FsMcp.Core.Validation
@@ -22,7 +24,7 @@ let private sampleConfig () =
         version "1.0.0"
 
         tool (
-            Tool.define "echo" "Echoes the input" (fun args ->
+            Tool.define "echo" "Echoes the input" (fun args _ ->
                 let msg =
                     args
                     |> Map.tryFind "message"
@@ -32,21 +34,21 @@ let private sampleConfig () =
             |> unwrap)
 
         tool (
-            Tool.define "add" "Adds two numbers" (fun args ->
+            Tool.define "add" "Adds two numbers" (fun args _ ->
                 let a = args |> Map.tryFind "a" |> Option.map (fun j -> j.GetDouble()) |> Option.defaultValue 0.0
                 let b = args |> Map.tryFind "b" |> Option.map (fun j -> j.GetDouble()) |> Option.defaultValue 0.0
                 Task.FromResult(Ok [ Content.text $"{a + b}" ]))
             |> unwrap)
 
         resource (
-            Resource.define "file:///tmp/test.txt" "Test File" (fun _ ->
+            Resource.define "file:///tmp/test.txt" "Test File" (fun _ _ ->
                 let uri = ResourceUri.create "file:///tmp/test.txt" |> unwrap
                 let mime = MimeType.create "text/plain" |> unwrap
                 Task.FromResult(Ok (TextResource (uri, mime, "Hello from resource"))))
             |> unwrap)
 
         resource (
-            Resource.define "config://app/settings" "App Settings" (fun _ ->
+            Resource.define "config://app/settings" "App Settings" (fun _ _ ->
                 let uri = ResourceUri.create "config://app/settings" |> unwrap
                 let mime = MimeType.create "application/json" |> unwrap
                 Task.FromResult(Ok (TextResource (uri, mime, """{"theme":"dark"}"""))))
@@ -55,7 +57,7 @@ let private sampleConfig () =
         prompt (
             Prompt.define "summarize"
                 [ { Name = "topic"; Description = Some "The topic"; Required = true } ]
-                (fun args ->
+                (fun args _ ->
                     let topic = args |> Map.tryFind "topic" |> Option.defaultValue "unknown"
                     Task.FromResult(Ok [
                         { Role = User; Content = Content.text $"Summarize: {topic}" }
@@ -63,7 +65,6 @@ let private sampleConfig () =
                     ]))
             |> unwrap)
 
-        useStdio
     }
 
 // ── Tests ────────────────────────────────────────────
@@ -198,10 +199,9 @@ let testServerTests =
                     name "ErrorServer"
                     version "1.0.0"
                     tool (
-                        Tool.define "fail" "Always fails" (fun _ ->
+                        Tool.define "fail" "Always fails" (fun _ _ ->
                             Task.FromResult(Error (TransportError "deliberate failure")))
                         |> unwrap)
-                    useStdio
                 }
                 let result =
                     TestServer.callTool config "fail" Map.empty
@@ -216,11 +216,10 @@ let testServerTests =
                     name "ExceptionServer"
                     version "1.0.0"
                     tool (
-                        Tool.define "boom" "Throws" (fun _ ->
+                        Tool.define "boom" "Throws" (fun _ _ ->
                             failwith "kaboom"
                             Task.FromResult(Ok []))
                         |> unwrap)
-                    useStdio
                 }
                 let result =
                     TestServer.callTool config "boom" Map.empty
@@ -235,10 +234,9 @@ let testServerTests =
                     name "ErrorServer"
                     version "1.0.0"
                     resource (
-                        Resource.define "file:///err" "Error Resource" (fun _ ->
+                        Resource.define "file:///err" "Error Resource" (fun _ _ ->
                             Task.FromResult(Error (TransportError "resource failure")))
                         |> unwrap)
-                    useStdio
                 }
                 let result =
                     TestServer.readResource config "file:///err" Map.empty
@@ -253,10 +251,9 @@ let testServerTests =
                     name "ErrorServer"
                     version "1.0.0"
                     prompt (
-                        Prompt.define "fail-prompt" [] (fun _ ->
+                        Prompt.define "fail-prompt" [] (fun _ _ ->
                             Task.FromResult(Error (TransportError "prompt failure")))
                         |> unwrap)
-                    useStdio
                 }
                 let result =
                     TestServer.getPrompt config "fail-prompt" Map.empty
@@ -265,5 +262,27 @@ let testServerTests =
                 | Error (TransportError msg) ->
                     Expect.equal msg "prompt failure" "error message"
                 | other -> failtest $"expected TransportError, got: %A{other}"
+
+            testCase "cancellation-aware test calls preserve request cancellation" <| fun _ ->
+                let config = mcpServer {
+                    name "CancellationServer"
+                    version "2.0.0"
+                    tool (
+                        Tool.define "cancel" "Cancels" (fun _ cancellationToken -> task {
+                            do! Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                            return Ok []
+                        })
+                        |> unwrap)
+                }
+                use cts = new CancellationTokenSource()
+                cts.Cancel()
+                let cancelled =
+                    try
+                        TestServer.callToolWithCancellation config "cancel" Map.empty cts.Token
+                        |> fun pending -> pending.GetAwaiter().GetResult()
+                        |> ignore
+                        false
+                    with :? OperationCanceledException -> true
+                Expect.isTrue cancelled "OperationCanceledException crosses the testing boundary"
         ]
     ]

@@ -152,7 +152,7 @@ let toolDefinitionTests =
                 Name = tn
                 Description = "echoes input"
                 InputSchema = None
-                Handler = fun _ -> System.Threading.Tasks.Task.FromResult(Ok [ Content.text "echoed" ])
+                Handler = fun _ _ -> System.Threading.Tasks.Task.FromResult(Ok [ Content.text "echoed" ])
             }
             Expect.equal (ToolName.value td.Name) "echo" "name"
             Expect.equal td.Description "echoes input" "description"
@@ -164,10 +164,13 @@ let toolDefinitionTests =
                 Name = tn
                 Description = "greets"
                 InputSchema = None
-                Handler = fun _ ->
+                Handler = fun _ _ ->
                     System.Threading.Tasks.Task.FromResult(Ok [ Content.text "Hello!"; Content.text "How are you?" ])
             }
-            let result = td.Handler Map.empty |> Async.AwaitTask |> Async.RunSynchronously
+            let result =
+                td.Handler Map.empty System.Threading.CancellationToken.None
+                |> Async.AwaitTask
+                |> Async.RunSynchronously
             match result with
             | Ok contents -> Expect.equal (List.length contents) 2 "count"
             | Error e -> failtest $"unexpected error: %A{e}"
@@ -184,7 +187,7 @@ let resourceDefinitionTests =
             let mime = MimeType.create "text/plain" |> Result.defaultWith (fun e -> failtest $"%A{e}")
             let rd : ResourceDefinition = {
                 Uri = uri; Name = "test"; Description = Some "a test"; MimeType = Some mime
-                Handler = fun _ -> System.Threading.Tasks.Task.FromResult(Ok (TextResource (uri, mime, "hello")))
+                Handler = fun _ _ -> System.Threading.Tasks.Task.FromResult(Ok (TextResource (uri, mime, "hello")))
             }
             Expect.equal rd.Name "test" "name"
             Expect.isSome rd.Description "has description"
@@ -194,7 +197,7 @@ let resourceDefinitionTests =
             let uri = ResourceUri.create "https://example.com/data" |> Result.defaultWith (fun e -> failtest $"%A{e}")
             let rd : ResourceDefinition = {
                 Uri = uri; Name = "json"; Description = None; MimeType = None
-                Handler = fun _ ->
+                Handler = fun _ _ ->
                     let m = MimeType.create "application/json" |> Result.defaultWith (fun e -> failtest $"%A{e}")
                     System.Threading.Tasks.Task.FromResult(Ok (TextResource (uri, m, "{}")))
             }
@@ -215,20 +218,37 @@ let promptTests =
             let pd : PromptDefinition = {
                 Name = pn; Description = None
                 Arguments = [ { Name = "name"; Description = None; Required = false } ]
-                Handler = fun args ->
+                Handler = fun args _ ->
                     let name = args |> Map.tryFind "name" |> Option.defaultValue "World"
                     System.Threading.Tasks.Task.FromResult(Ok [
                         { Role = User; Content = Content.text $"Greet {name}" }
                         { Role = Assistant; Content = Content.text $"Hello, {name}!" }
                     ])
             }
-            let result = pd.Handler (Map.ofList ["name", "Alice"]) |> Async.AwaitTask |> Async.RunSynchronously
+            let result =
+                pd.Handler (Map.ofList ["name", "Alice"]) System.Threading.CancellationToken.None
+                |> Async.AwaitTask
+                |> Async.RunSynchronously
             match result with
             | Ok messages ->
                 Expect.equal (List.length messages) 2 "count"
                 Expect.equal messages.[0].Role User "first role"
                 Expect.equal messages.[1].Role Assistant "second role"
             | Error e -> failtest $"unexpected error: %A{e}"
+    ]
+
+let handlerAdapterTests =
+    testList "Handler adapters" [
+        testCase "ignoreCancellation makes cancellation omission explicit" <| fun _ ->
+            use cancellation = new System.Threading.CancellationTokenSource()
+            cancellation.Cancel()
+            let adapted =
+                Handler.ignoreCancellation (fun value ->
+                    System.Threading.Tasks.Task.FromResult(value + 1))
+            let result =
+                adapted 41 cancellation.Token
+                |> fun pending -> pending.GetAwaiter().GetResult()
+            Expect.equal result 42 "the adapter forwards input without consulting cancellation"
     ]
 
 // ───────────────────────────────────────────────────────────
@@ -257,5 +277,6 @@ let allTypesTests =
         toolDefinitionTests
         resourceDefinitionTests
         promptTests
+        handlerAdapterTests
         domainPropertyTests
     ]

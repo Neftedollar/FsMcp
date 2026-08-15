@@ -122,13 +122,17 @@ let invariantTests =
             for input in [ null; ""; " "; "\t"; "\n"; "  \t  \n  " ] do
                 Expect.isError (ToolName.create input) $"should reject whitespace-like input"
 
-        testPropertyWithConfig config "ResourceUri.create requires :// in the URI"
+        testPropertyWithConfig config "ResourceUri.create accepts only absolute URIs and preserves input"
             <| fun (s: string) ->
                 if isNull s || System.String.IsNullOrWhiteSpace s then
                     true // rejected as empty, skip
                 else
                     match ResourceUri.create s with
-                    | Ok uri -> (ResourceUri.value uri).Contains("://")
+                    | Ok uri ->
+                        let value = ResourceUri.value uri
+                        match System.Uri.TryCreate(value, System.UriKind.Absolute) with
+                        | true, parsed -> value = s && not (System.String.IsNullOrEmpty parsed.Scheme)
+                        | _ -> false
                     | Error _ -> true // rejection is fine
 
         testCase "MimeType.create defaults null/empty to application/octet-stream" <| fun _ ->

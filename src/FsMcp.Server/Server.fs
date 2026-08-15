@@ -1,12 +1,9 @@
+#nowarn "44"
+
 namespace FsMcp.Server
 
 open FsMcp.Core
 open FsMcp.Core.Validation
-
-/// Transport configuration for the MCP server.
-type Transport =
-    | Stdio
-    | Http of endpoint: string option
 
 /// Middleware type: receives context and next handler, returns response.
 type McpMiddleware =
@@ -32,8 +29,11 @@ type ServerConfig = {
     Tools: ToolDefinition list
     Resources: ResourceDefinition list
     Prompts: PromptDefinition list
+    /// Legacy middleware declarations. FsMcp 1.x accepted these declarations but
+    /// never executed them. Non-empty middleware is rejected when registering a
+    /// server; use SDK request filters or ASP.NET Core middleware instead.
+    [<System.Obsolete("FsMcp middleware declarations were never executed. Use ModelContextProtocol request filters or ASP.NET Core middleware; non-empty middleware now fails closed during server registration.")>]
     Middleware: McpMiddleware list
-    Transport: Transport
     /// Whether to attach the built-in console logger (writes to stderr).
     /// Default true. Set false for stdio hosts that leave the child's stderr
     /// unread — see the `consoleLogging` custom operation for the full rationale.
@@ -76,7 +76,6 @@ type ServerBuilderState = {
     Resources: ResourceDefinition list
     Prompts: PromptDefinition list
     Middleware: McpMiddleware list
-    Transport: Transport
     ConsoleLogging: bool
 }
 
@@ -88,7 +87,6 @@ module ServerBuilderState =
         Resources = []
         Prompts = []
         Middleware = []
-        Transport = Stdio
         ConsoleLogging = true
     }
 
@@ -131,19 +129,10 @@ type McpServerBuilder() =
         { state with Prompts = state.Prompts @ [pd] }
 
     /// Add middleware.
+    [<System.Obsolete("FsMcp middleware declarations were never executed. Use ModelContextProtocol request filters or ASP.NET Core middleware; non-empty middleware now fails closed during server registration.")>]
     [<CustomOperation("middleware")>]
     member _.Middleware(state: ServerBuilderState, mw: McpMiddleware) =
         { state with Middleware = state.Middleware @ [mw] }
-
-    /// Use stdio transport.
-    [<CustomOperation("useStdio")>]
-    member _.UseStdio(state: ServerBuilderState) =
-        { state with Transport = Stdio }
-
-    /// Use HTTP transport with optional endpoint.
-    [<CustomOperation("useHttp")>]
-    member _.UseHttp(state: ServerBuilderState, endpoint: string option) =
-        { state with Transport = Http endpoint }
 
     /// Enable or disable the built-in console logger. Default true.
     ///
@@ -172,7 +161,6 @@ type McpServerBuilder() =
             Resources = state.Resources
             Prompts = state.Prompts
             Middleware = state.Middleware
-            Transport = state.Transport
             ConsoleLogging = state.ConsoleLogging
         }
         match ServerConfig.validate config with

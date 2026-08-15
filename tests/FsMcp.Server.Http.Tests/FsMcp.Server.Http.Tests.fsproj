@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="WireContractTests.fs" />
     <Compile Include="HttpSubscriptionDisconnectTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
@@ -24,9 +25,9 @@
     <PackageReference Include="FsCheck" Version="2.16.6" />
     <PackageReference Include="YoloDev.Expecto.TestSdk" Version="0.15.5" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.5" />
-    <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="[$(MicrosoftExtensionsVersion)]" />
+    <PackageReference Include="ModelContextProtocol" Version="[$(ModelContextProtocolVersion)]" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="[$(ModelContextProtocolVersion)]" />
   </ItemGroup>
 
 </Project>

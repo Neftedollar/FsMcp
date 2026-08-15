@@ -1,6 +1,7 @@
 namespace FsMcp.Server
 
 open System.Text.Json
+open System.Threading
 open System.Threading.Tasks
 open FsMcp.Core
 open FsMcp.Core.Validation
@@ -11,7 +12,7 @@ module Tool =
     let define
         (name: string)
         (description: string)
-        (handler: Map<string, JsonElement> -> Task<Result<Content list, McpError>>)
+        (handler: Map<string, JsonElement> -> CancellationToken -> Task<Result<Content list, McpError>>)
         : Result<ToolDefinition, ValidationError> =
         match ToolName.create name with
         | Ok tn ->
@@ -28,7 +29,7 @@ module Resource =
     let define
         (uri: string)
         (name: string)
-        (handler: Map<string, string> -> Task<Result<ResourceContents, McpError>>)
+        (handler: Map<string, string> -> CancellationToken -> Task<Result<ResourceContents, McpError>>)
         : Result<ResourceDefinition, ValidationError> =
         match ResourceUri.create uri with
         | Ok ru ->
@@ -46,7 +47,7 @@ module Prompt =
     let define
         (name: string)
         (args: PromptArgument list)
-        (handler: Map<string, string> -> Task<Result<McpMessage list, McpError>>)
+        (handler: Map<string, string> -> CancellationToken -> Task<Result<McpMessage list, McpError>>)
         : Result<PromptDefinition, ValidationError> =
         match PromptName.create name with
         | Ok pn ->

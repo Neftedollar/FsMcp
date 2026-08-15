@@ -2,7 +2,10 @@ module FsMcp.Server.Tests.TransportTests
 
 open Expecto
 open System.Text.Json
+open System.Threading
 open System.Threading.Tasks
+open Microsoft.Extensions.DependencyInjection
+open ModelContextProtocol.Server
 open FsMcp.Core
 open FsMcp.Core.Validation
 open FsMcp.Server
@@ -13,7 +16,7 @@ let transportTests =
         testCase "createSdkTool produces a tool that can be invoked" <| fun _ ->
             // Verify the bridge from F# ToolDefinition to SDK McpServerTool works
             let td =
-                Tool.define "test-echo" "Echoes back" (fun args ->
+                Tool.define "test-echo" "Echoes back" (fun args _ ->
                     let msg =
                         args
                         |> Map.tryFind "message"
@@ -30,7 +33,7 @@ let transportTests =
             let args = Map.ofList [
                 "message", JsonDocument.Parse("\"hello\"").RootElement
             ]
-            let result = td.Handler args |> Async.AwaitTask |> Async.RunSynchronously
+            let result = td.Handler args CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
             match result with
             | Ok [ Text t ] -> Expect.equal t "Echo: hello" "echoed"
             | other -> failtest $"unexpected: %A{other}"
@@ -42,16 +45,31 @@ let transportTests =
                 name "TestServer"
                 version "1.0.0"
                 tool (
-                    Tool.define "noop" "Does nothing" (fun _ ->
+                    Tool.define "noop" "Does nothing" (fun _ _ ->
                         Task.FromResult(Ok [ Content.text "ok" ]))
                     |> Result.defaultWith (fun e -> failwith $"%A{e}"))
-                useStdio
             }
             // Verify config is valid and Server.run type-checks
             Expect.equal (ServerName.value config.Name) "TestServer" "name"
             // Server.run returns Task<unit> — type check passes
             let _runFn : ServerConfig -> Task<unit> = Server.run
             ()
+
+        testCase "transport-agnostic composition does not advertise stateful subscriptions" <| fun _ ->
+            let uri = ResourceUri.create "https://example.com/data" |> Result.defaultWith (fun error -> failtest $"%A{error}")
+            let mime = MimeType.create "text/plain" |> Result.defaultWith (fun error -> failtest $"%A{error}")
+            let definition =
+                Resource.define (ResourceUri.value uri) "data" (fun _ _ ->
+                    Task.FromResult(Ok (TextResource(uri, mime, "data"))))
+                |> Result.defaultWith (fun error -> failtest $"%A{error}")
+            let config = mcpServer {
+                name "TransportAgnostic"
+                version "2.0"
+                resource definition
+            }
+            let services = ServiceCollection()
+            let registration = Server.addToBuilder config (services.AddMcpServer())
+            Expect.isNone registration.Subscriptions "only stateful HTTP composition enables subscriptions"
 
         testCase "Interop.toSdkContentBlock converts Text correctly" <| fun _ ->
             let content = Content.text "hello"

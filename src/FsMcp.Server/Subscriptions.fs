@@ -2,118 +2,233 @@ namespace FsMcp.Server
 
 open System
 open System.Collections.Concurrent
+open System.Threading
 open System.Threading.Tasks
-open FsMcp.Core
 open FsMcp.Core.Validation
 open ModelContextProtocol.Protocol
 open ModelContextProtocol.Server
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Resource subscription infrastructure
-// ─────────────────────────────────────────────────────────────────────────────
-
 /// Opaque identifier for a single subscription entry.
-type SubscriptionId = SubscriptionId of Guid
+type SubscriptionId = private SubscriptionId of Guid
 
 /// A single subscription: maps (session, uri) to an id.
-type SubscriptionEntry = {
+type internal SubscriptionEntry = {
     Id: SubscriptionId
     SessionId: string
     Uri: ResourceUri
 }
 
-/// Per-session server reference, used to send notifications.
-/// SDK 1.2.0 does not expose a session-disconnect hook.
-/// MUST be called on disconnect; see unsubscribeAllForSession.
-[<NoComparison; NoEquality>]
-type ResourceSubscriptionRegistry = {
-    /// All active subscriptions, keyed by SubscriptionId.
-    Subscribers: ConcurrentDictionary<SubscriptionId, SubscriptionEntry>
-    /// Per-session McpServer references, for sending notifications.
-    /// Entries are added on subscribe and removed on unsubscribeAllForSession.
-    /// NOTE: SDK 1.2.0 does not expose a disconnect hook so cleanup is
-    /// best-effort; see GitHub issue linked on unsubscribeAllForSession.
-    SessionServers: ConcurrentDictionary<string, McpServer>
-}
+/// Why a resource subscription could not be registered.
+type SubscriptionError =
+    | MissingSessionId
+    | SubscriptionLimitExceeded of maximum: int
 
-/// Functions for managing resource subscriptions and notifying clients.
+/// Opaque, bounded per-session resource subscription state. Its mutable
+/// dictionaries are intentionally hidden so callers cannot bypass the atomic
+/// bound and cleanup invariants.
+[<Sealed>]
+type ResourceSubscriptionRegistry internal (
+    subscribers: ConcurrentDictionary<SubscriptionId, SubscriptionEntry>,
+    sessionServers: ConcurrentDictionary<string, McpServer>,
+    maxSubscriptionsPerSession: int) =
+
+    let gate = obj ()
+
+    member internal _.Subscribers = subscribers
+    member internal _.SessionServers = sessionServers
+    member internal _.Gate = gate
+    member _.MaxSubscriptionsPerSession = maxSubscriptionsPerSession
+
 module ResourceSubscriptions =
 
-    /// Create a new, empty registry.
-    let create () : ResourceSubscriptionRegistry = {
-        Subscribers = ConcurrentDictionary<SubscriptionId, SubscriptionEntry>()
-        SessionServers = ConcurrentDictionary<string, McpServer>()
-    }
+    [<Literal>]
+    let DefaultMaxSubscriptionsPerSession = 256
 
-    /// Subscribe a session to a resource URI.
-    /// Idempotent under sequential calls: if the same (sessionId, uri) already exists,
-    /// returns the existing SubscriptionId. Two concurrent subscribes for the same
-    /// (sessionId, uri) may transiently produce two entries (the tryFind/insert pair
-    /// is not atomic across keys); both will be cleaned up by unsubscribeAllForSession,
-    /// and notifyChanged de-dupes by session via Seq.distinct, so the only cost is
-    /// one extra dictionary entry until disconnect.
-    let subscribe (sessionId: string) (uri: ResourceUri) (reg: ResourceSubscriptionRegistry) : SubscriptionId =
-        let existing =
+    let private defaultNotificationTimeout = TimeSpan.FromSeconds 30.0
+
+    let createWithLimit (maxSubscriptionsPerSession: int) =
+        if maxSubscriptionsPerSession <= 0 then
+            invalidArg
+                (nameof maxSubscriptionsPerSession)
+                "The maximum number of subscriptions per session must be positive."
+
+        ResourceSubscriptionRegistry(
+            ConcurrentDictionary<SubscriptionId, SubscriptionEntry>(),
+            ConcurrentDictionary<string, McpServer>(StringComparer.Ordinal),
+            maxSubscriptionsPerSession)
+
+    let create () = createWithLimit DefaultMaxSubscriptionsPerSession
+
+    let subscriptionCount (reg: ResourceSubscriptionRegistry) =
+        reg.Subscribers.Count
+
+    let trackedSessionCount (reg: ResourceSubscriptionRegistry) =
+        reg.SessionServers.Count
+
+    let isEmpty reg = subscriptionCount reg = 0 && trackedSessionCount reg = 0
+
+    let trackedSessionIds (reg: ResourceSubscriptionRegistry) =
+        reg.SessionServers.Keys |> Seq.toList
+
+    let subscribe
+        (sessionId: string)
+        (server: McpServer)
+        (uri: ResourceUri)
+        (reg: ResourceSubscriptionRegistry)
+        : Result<SubscriptionId, SubscriptionError> =
+
+        if String.IsNullOrWhiteSpace sessionId || isNull server then
+            Error MissingSessionId
+        else
+            lock reg.Gate (fun () ->
+                let existing =
+                    reg.Subscribers
+                    |> Seq.tryPick (fun keyValue ->
+                        let entry = keyValue.Value
+                        if entry.SessionId = sessionId && entry.Uri = uri then
+                            Some entry.Id
+                        else
+                            None)
+
+                match existing with
+                | Some subscriptionId ->
+                    reg.SessionServers.[sessionId] <- server
+                    Ok subscriptionId
+                | None ->
+                    let sessionCount =
+                        reg.Subscribers
+                        |> Seq.sumBy (fun keyValue ->
+                            if keyValue.Value.SessionId = sessionId then 1 else 0)
+
+                    if sessionCount >= reg.MaxSubscriptionsPerSession then
+                        Error(SubscriptionLimitExceeded reg.MaxSubscriptionsPerSession)
+                    else
+                        let id = SubscriptionId(Guid.NewGuid())
+                        let entry = { Id = id; SessionId = sessionId; Uri = uri }
+                        reg.Subscribers.[id] <- entry
+                        reg.SessionServers.[sessionId] <- server
+                        Ok id)
+
+    let unsubscribe (id: SubscriptionId) (reg: ResourceSubscriptionRegistry) =
+        lock reg.Gate (fun () ->
+            match reg.Subscribers.TryRemove id with
+            | true, entry ->
+                let sessionStillSubscribed =
+                    reg.Subscribers
+                    |> Seq.exists (fun keyValue -> keyValue.Value.SessionId = entry.SessionId)
+                if not sessionStillSubscribed then
+                    reg.SessionServers.TryRemove entry.SessionId |> ignore
+            | _ -> ())
+
+    let unsubscribeResource
+        (sessionId: string)
+        (uri: ResourceUri)
+        (reg: ResourceSubscriptionRegistry) =
+
+        lock reg.Gate (fun () ->
             reg.Subscribers
-            |> Seq.tryFind (fun kv -> kv.Value.SessionId = sessionId && kv.Value.Uri = uri)
-        match existing with
-        | Some kv -> kv.Value.Id
-        | None ->
-            let id = SubscriptionId (Guid.NewGuid())
-            let entry = { Id = id; SessionId = sessionId; Uri = uri }
-            reg.Subscribers.[id] <- entry
-            id
+            |> Seq.choose (fun keyValue ->
+                let entry = keyValue.Value
+                if entry.SessionId = sessionId && entry.Uri = uri then Some keyValue.Key else None)
+            |> Seq.toArray
+            |> Array.iter (fun id -> reg.Subscribers.TryRemove id |> ignore)
 
-    /// Unsubscribe by id.
-    let unsubscribe (id: SubscriptionId) (reg: ResourceSubscriptionRegistry) : unit =
-        reg.Subscribers.TryRemove(id) |> ignore
-
-    /// Unsubscribe all subscriptions for a session and remove its server reference.
-    /// MUST be called by transport on disconnect.
-    /// SDK 1.2.0 does not expose a session-disconnect hook — once the SDK adds
-    /// IHostedMcpSessionLifecycle or equivalent, wire this call there.
-    /// See: https://github.com/Neftedollar/FsMcp/issues/5
-    let unsubscribeAllForSession (sessionId: string) (reg: ResourceSubscriptionRegistry) : unit =
-        let toRemove =
-            reg.Subscribers
-            |> Seq.filter (fun kv -> kv.Value.SessionId = sessionId)
-            |> Seq.map (fun kv -> kv.Key)
-            |> Seq.toList
-        for id in toRemove do
-            reg.Subscribers.TryRemove(id) |> ignore
-        reg.SessionServers.TryRemove(sessionId) |> ignore
-
-    /// Send notifications/resources/updated to all sessions subscribed to the given uri.
-    /// Fan-out is parallel: one slow or disconnected client does not block others.
-    /// Best-effort: per-session failures are caught and swallowed (a disconnected
-    /// client should not break notification dispatch for the rest), so Task.WhenAll
-    /// here will not throw under normal operation.
-    let notifyChanged (uri: ResourceUri) (reg: ResourceSubscriptionRegistry) : Task<unit> =
-        task {
-            // Collect distinct session IDs subscribed to this URI
-            let sessions =
+            let sessionStillSubscribed =
                 reg.Subscribers
-                |> Seq.filter (fun kv -> kv.Value.Uri = uri)
-                |> Seq.map (fun kv -> kv.Value.SessionId)
+                |> Seq.exists (fun keyValue -> keyValue.Value.SessionId = sessionId)
+            if not sessionStillSubscribed then
+                reg.SessionServers.TryRemove sessionId |> ignore)
+
+    let unsubscribeAllForSession
+        (sessionId: string)
+        (reg: ResourceSubscriptionRegistry) =
+
+        lock reg.Gate (fun () ->
+            reg.Subscribers
+            |> Seq.choose (fun keyValue ->
+                if keyValue.Value.SessionId = sessionId then Some keyValue.Key else None)
+            |> Seq.toArray
+            |> Array.iter (fun id -> reg.Subscribers.TryRemove id |> ignore)
+            reg.SessionServers.TryRemove sessionId |> ignore)
+
+    let private observeLateFault (pending: Task) =
+        if not (isNull pending) && not pending.IsCompleted then
+            pending.ContinueWith(
+                (fun (completed: Task) -> ignore completed.Exception),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously
+                ||| TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default)
+            |> ignore
+
+    let private notifyChangedCore
+        (sendTimeout: TimeSpan)
+        (uri: ResourceUri)
+        (registry: ResourceSubscriptionRegistry)
+        (cancellationToken: CancellationToken)
+        : Task<unit> =
+
+        if sendTimeout <= TimeSpan.Zero then
+            invalidArg (nameof sendTimeout) "The notification send timeout must be positive."
+
+        task {
+            cancellationToken.ThrowIfCancellationRequested()
+
+            let sessions =
+                registry.Subscribers
+                |> Seq.choose (fun keyValue ->
+                    if keyValue.Value.Uri = uri then Some keyValue.Value.SessionId else None)
                 |> Seq.distinct
-                |> Seq.toList
+                |> Seq.toArray
 
-            let notifyForSession (sessionId: string) : Task =
+            let notifySession (sessionId: string) : Task =
                 task {
-                    match reg.SessionServers.TryGetValue(sessionId) with
+                    match registry.SessionServers.TryGetValue sessionId with
                     | true, server ->
+                        use sendCancellation =
+                            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+                        sendCancellation.CancelAfter(sendTimeout)
+                        let mutable pending: Task = null
                         try
-                            do! server.SendNotificationAsync(
+                            pending <-
+                                server.SendNotificationAsync(
                                     NotificationMethods.ResourceUpdatedNotification,
-                                    ResourceUpdatedNotificationParams(Uri = ResourceUri.value uri))
-                        with _ -> () // Swallow: client may have disconnected
-                    | _ -> () // Session no longer tracked — silently skip
-                } :> Task
+                                    ResourceUpdatedNotificationParams(Uri = ResourceUri.value uri),
+                                    cancellationToken = sendCancellation.Token)
+                            do! pending.WaitAsync(sendCancellation.Token)
+                        with
+                        | :? OperationCanceledException when cancellationToken.IsCancellationRequested ->
+                            observeLateFault pending
+                            return raise (OperationCanceledException(cancellationToken))
+                        | _ ->
+                            observeLateFault pending
+                            unsubscribeAllForSession sessionId registry
+                    | _ -> ()
+                }
 
-            // Parallel fan-out (B5)
-            let pendings =
-                sessions
-                |> List.map notifyForSession
-                |> List.toArray
-            do! Task.WhenAll(pendings)
+            try
+                do! sessions |> Array.map notifySession |> Task.WhenAll
+            with :? OperationCanceledException when cancellationToken.IsCancellationRequested ->
+                return raise (OperationCanceledException(cancellationToken))
         }
+
+    /// Send notifications/resources/updated with cooperative caller cancellation.
+    /// Fan-out is parallel and each session write has an independent 30-second
+    /// bound. A failed or timed-out transport is removed; caller cancellation is
+    /// rethrown with the caller's token. The registry is the final argument so the
+    /// function composes naturally in an F# pipeline.
+    let notifyChangedWithCancellation
+        (uri: ResourceUri)
+        (cancellationToken: CancellationToken)
+        (reg: ResourceSubscriptionRegistry) =
+        notifyChangedCore defaultNotificationTimeout uri reg cancellationToken
+
+    let notifyChanged uri reg =
+        notifyChangedWithCancellation uri CancellationToken.None reg
+
+    let internal notifyChangedWithTimeoutInternal
+        (sendTimeout: TimeSpan)
+        (uri: ResourceUri)
+        (cancellationToken: CancellationToken)
+        (registry: ResourceSubscriptionRegistry) =
+        notifyChangedCore sendTimeout uri registry cancellationToken
