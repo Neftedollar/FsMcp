@@ -15,6 +15,14 @@ const IMAGE_SIZE_ADVISORY_FINGERPRINT =
   '20b851923e893e086bfbd226bbe4e012837a39024324b510aae29259315b0b07';
 const SEARCH_LOCAL = '@easyops-cn/docusaurus-search-local';
 const SEARCH_LOCAL_VERSION = '0.55.3';
+// npm 10.9.8 derives this breaking downgrade for the direct wrapper even though
+// its exact image-size advisory leaf remains unfixable. Accept only this known
+// projection, and only after proving 0.55.3 is latest with no newer SemVer core.
+const SEARCH_LOCAL_DERIVED_FIX = {
+  name: SEARCH_LOCAL,
+  version: '0.29.0',
+  isSemVerMajor: true,
+};
 // npm audit varies derived `effects` and `fixAvailable` projections even for an
 // unchanged lockfile. The security boundary is the exact package closure, direct
 // package identity, reviewed dependency edges, and exact leaf advisory objects.
@@ -197,14 +205,11 @@ function hasReviewedSearchLocalRegistryEvidence({
 
 function isReviewedSearchLocalFixProjection(value, registryEvidence) {
   if (!hasReviewedSearchLocalRegistryEvidence(registryEvidence)) return false;
-  if (value === true) return true;
   return value !== null
     && typeof value === 'object'
     && !Array.isArray(value)
     && hasExactKeys(value, ['name', 'version', 'isSemVerMajor'])
-    && value.name === SEARCH_LOCAL
-    && value.version === SEARCH_LOCAL_VERSION
-    && value.isSemVerMajor === false;
+    && sameCanonical(value, SEARCH_LOCAL_DERIVED_FIX);
 }
 
 function validateDependencyPolicy(packageJson, packageLock, {requireRoot = true} = {}) {
@@ -343,7 +348,11 @@ function validateAudit(audit, now = Date.now(), registryEvidence = {}) {
       if (expected.requireNoFix
         && vulnerability.fixAvailable !== false
         && !reviewedSearchProjection) {
-        fail(`${name} unexpectedly gained an available direct remediation: ${JSON.stringify(vulnerability.fixAvailable)}.`);
+        fail(
+          `${name} unexpectedly gained an available direct remediation: `
+          + `${JSON.stringify(vulnerability.fixAvailable)}; registry evidence: `
+          + `${JSON.stringify(registryEvidence)}.`,
+        );
       }
       if (vulnerability.via.some((item) => typeof item !== 'string')) {
         fail(`${name} contains a direct advisory instead of only the image-size dependency chain.`);
@@ -552,58 +561,70 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
       latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
       publishedSearchLocalVersions: ['0.55.2', '0.55.3-beta.1', SEARCH_LOCAL_VERSION],
     };
-    const booleanProjection = structuredClone(audit);
-    booleanProjection.vulnerabilities[SEARCH_LOCAL].fixAvailable = true;
-    validateAudit(booleanProjection, Date.now(), reviewedEvidence);
-
-    const exactDescriptorProjection = structuredClone(audit);
-    exactDescriptorProjection.vulnerabilities[SEARCH_LOCAL].fixAvailable = {
-      name: SEARCH_LOCAL,
-      version: SEARCH_LOCAL_VERSION,
-      isSemVerMajor: false,
-    };
-    validateAudit(exactDescriptorProjection, Date.now(), reviewedEvidence);
+    const reviewedProjection = structuredClone(audit);
+    reviewedProjection.vulnerabilities[SEARCH_LOCAL].fixAvailable = SEARCH_LOCAL_DERIVED_FIX;
+    validateAudit(reviewedProjection, Date.now(), reviewedEvidence);
 
     expectRejected(
-      booleanProjection,
+      reviewedProjection,
       () => {},
-      'a volatile search-local remediation was accepted without registry evidence',
+      'the reviewed search-local downgrade was accepted without registry evidence',
     );
     expectRejected(
-      booleanProjection,
+      reviewedProjection,
       () => {},
-      'a volatile search-local remediation was accepted when the latest tag moved',
+      'the reviewed search-local downgrade was accepted when the latest tag moved',
       {
         latestSearchLocalVersion: '0.55.4',
         publishedSearchLocalVersions: [SEARCH_LOCAL_VERSION, '0.55.4'],
       },
     );
     expectRejected(
-      booleanProjection,
+      reviewedProjection,
       () => {},
-      'a volatile search-local remediation was accepted with a newer stable registry version',
+      'the reviewed search-local downgrade was accepted with a newer stable registry version',
       {
         latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
         publishedSearchLocalVersions: [SEARCH_LOCAL_VERSION, '0.55.4'],
       },
     );
     expectRejected(
-      booleanProjection,
+      reviewedProjection,
       () => {},
-      'a volatile search-local remediation was accepted with a newer prerelease version',
+      'the reviewed search-local downgrade was accepted with a newer prerelease version',
       {
         latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
         publishedSearchLocalVersions: [SEARCH_LOCAL_VERSION, '0.56.0-beta.1'],
       },
     );
     expectRejected(
-      booleanProjection,
+      reviewedProjection,
       () => {},
-      'a volatile search-local remediation was accepted with malformed registry evidence',
+      'the reviewed search-local downgrade was accepted with malformed registry evidence',
       {
         latestSearchLocalVersion: SEARCH_LOCAL_VERSION,
         publishedSearchLocalVersions: [SEARCH_LOCAL_VERSION, 'not-semver'],
       },
+    );
+    expectRejected(
+      audit,
+      (changed) => {
+        changed.vulnerabilities[SEARCH_LOCAL].fixAvailable = true;
+      },
+      'a boolean search-local remediation was accepted',
+      reviewedEvidence,
+    );
+    expectRejected(
+      audit,
+      (changed) => {
+        changed.vulnerabilities[SEARCH_LOCAL].fixAvailable = {
+          name: SEARCH_LOCAL,
+          version: SEARCH_LOCAL_VERSION,
+          isSemVerMajor: false,
+        };
+      },
+      'a search-local remediation to the installed version was accepted',
+      reviewedEvidence,
     );
     expectRejected(
       audit,
@@ -615,6 +636,28 @@ function runNegativeSelfTests(audit, registryEvidence = {}) {
         };
       },
       'a future search-local remediation was accepted',
+      reviewedEvidence,
+    );
+    expectRejected(
+      audit,
+      (changed) => {
+        changed.vulnerabilities[SEARCH_LOCAL].fixAvailable = {
+          ...SEARCH_LOCAL_DERIVED_FIX,
+          isSemVerMajor: false,
+        };
+      },
+      'a search-local downgrade with changed major classification was accepted',
+      reviewedEvidence,
+    );
+    expectRejected(
+      audit,
+      (changed) => {
+        changed.vulnerabilities[SEARCH_LOCAL].fixAvailable = {
+          ...SEARCH_LOCAL_DERIVED_FIX,
+          name: '@docusaurus/core',
+        };
+      },
+      'a search-local downgrade with changed package name was accepted',
       reviewedEvidence,
     );
   }
@@ -690,7 +733,8 @@ function loadSearchLocalRegistryEvidence(npmCommand, websiteRoot) {
   if (!hasReviewedSearchLocalRegistryEvidence(registryEvidence)) {
     fail(
       `${SEARCH_LOCAL} registry state changed: expected latest version `
-      + `${SEARCH_LOCAL_VERSION} with no newer published version.`,
+      + `${SEARCH_LOCAL_VERSION} with no newer published version; received `
+      + `${JSON.stringify(registryEvidence)}.`,
     );
   }
   return registryEvidence;
