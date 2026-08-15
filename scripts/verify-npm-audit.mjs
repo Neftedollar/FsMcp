@@ -941,7 +941,7 @@ function runNpmInvocationSelfTests() {
 
   let rejectedMissingWindowsExecPath = false;
   try {
-    createNpmInvocation({platform: 'win32', npmExecPath: undefined});
+    createNpmInvocation({platform: 'win32', npmExecPath: null});
   } catch (error) {
     rejectedMissingWindowsExecPath = error.message.includes('without npm_execpath');
   }
@@ -949,7 +949,7 @@ function runNpmInvocationSelfTests() {
     fail('npm invocation self-test accepted Windows without npm_execpath.');
   }
 
-  const linuxInvocation = createNpmInvocation({platform: 'linux', npmExecPath: undefined});
+  const linuxInvocation = createNpmInvocation({platform: 'linux', npmExecPath: null});
   captured = undefined;
   invokeNpm(
     linuxInvocation,
