@@ -254,7 +254,12 @@ function validateDependencyPolicy(packageJson, packageLock, {requireRoot = true}
       fail(`${name} is not locked to 3.10.2.`);
     }
   }
-  const expectedOverrides = { 'serialize-javascript': '7.0.5', uuid: '11.1.1' };
+  const expectedOverrides = {
+    'fast-uri': '3.1.7',
+    qs: '6.16.0',
+    'serialize-javascript': '7.0.5',
+    uuid: '11.1.1',
+  };
   if (JSON.stringify(packageJson.overrides) !== JSON.stringify(expectedOverrides)) {
     fail(`Unexpected npm overrides: ${JSON.stringify(packageJson.overrides)}.`);
   }

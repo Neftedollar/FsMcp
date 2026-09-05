@@ -8,6 +8,10 @@ Canonical documentation: https://neftedollar.com/FsMcp/
 Repository: https://github.com/Neftedollar/FsMcp
 Packages: https://www.nuget.org/packages?q=FsMcp
 
+## Author
+
+- [Roman Melnikov (Neftedollar)](https://neftedollar.com/)
+
 ## Install
 
     dotnet add package FsMcp.Server
