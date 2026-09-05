@@ -9,6 +9,10 @@ streaming handlers receive a final CancellationToken. Client resource reads
 return the complete ResourceContents list. Server transport is selected by the
 runner, not by the server computation expression.
 
+## Author
+
+- [Roman Melnikov (Neftedollar)](https://neftedollar.com/)
+
 ## Packages
 
 - FsMcp.Core: domain types, validation, and serialization
