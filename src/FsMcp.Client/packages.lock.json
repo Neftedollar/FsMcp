@@ -121,7 +121,7 @@
         "type": "Project",
         "dependencies": {
           "FSharp.Core": "[10.1.203, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, 10.0.7]",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, )",
           "ModelContextProtocol": "[1.4.1, 1.4.1]"
         }
       }

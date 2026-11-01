@@ -383,7 +383,7 @@
         "type": "Project",
         "dependencies": {
           "FSharp.Core": "[10.1.203, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, 10.0.7]",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, )",
           "ModelContextProtocol": "[1.4.1, 1.4.1]"
         }
       },
@@ -392,8 +392,8 @@
         "dependencies": {
           "FSharp.Core": "[10.1.203, )",
           "FsMcp.Core": "[2.0.0, )",
-          "Microsoft.Extensions.Hosting": "[10.0.7, 10.0.7]",
-          "Microsoft.Extensions.Logging.Console": "[10.0.7, 10.0.7]",
+          "Microsoft.Extensions.Hosting": "[10.0.7, )",
+          "Microsoft.Extensions.Logging.Console": "[10.0.7, )",
           "ModelContextProtocol": "[1.4.1, 1.4.1]",
           "TypeShape": "[10.0.0, )"
         }

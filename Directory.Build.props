@@ -10,6 +10,13 @@
     <Version>2.0.0</Version>
     <PackageReleaseNotes>https://github.com/Neftedollar/FsMcp/blob/v$(Version)/CHANGELOG.md</PackageReleaseNotes>
     <ModelContextProtocolVersion>1.4.1</ModelContextProtocolVersion>
+    <!-- Floor, not an exact pin: this flows into the published .nuspec, where an
+         exact range makes any consumer that pulls a newer Microsoft.Extensions
+         transitively fail restore with NU1107 (and NU1608 under
+         TreatWarningsAsErrors when they reference it directly). It also blocks
+         10.0.x servicing patches. Our own builds stay reproducible via
+         packages.lock.json and locked-mode restore, not via this range.
+         Same reasoning as the FSharp.Core floor below. -->
     <MicrosoftExtensionsVersion>10.0.7</MicrosoftExtensionsVersion>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <Deterministic>true</Deterministic>

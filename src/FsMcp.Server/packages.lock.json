@@ -22,7 +22,7 @@
       },
       "Microsoft.Extensions.Hosting": {
         "type": "Direct",
-        "requested": "[10.0.7, 10.0.7]",
+        "requested": "[10.0.7, )",
         "resolved": "10.0.7",
         "contentHash": "M/vBpfWcschvS2EUeq7cHfscsxabiGTptXwV7GeSueovGiSoNjyo1j5PMcWuOAAQrRW3nRqxZk8NeumrmpzUBg==",
         "dependencies": {
@@ -52,7 +52,7 @@
       },
       "Microsoft.Extensions.Logging.Console": {
         "type": "Direct",
-        "requested": "[10.0.7, 10.0.7]",
+        "requested": "[10.0.7, )",
         "resolved": "10.0.7",
         "contentHash": "DA++Es6v6W0HfrOrw+K8WyN6jNnZHp640PDdEvl8yfeVmgflKdn6vSSFvufNUSOuY+M2ZaSUgfY+jUKtNpXcCw==",
         "dependencies": {
@@ -352,7 +352,7 @@
         "type": "Project",
         "dependencies": {
           "FSharp.Core": "[10.1.203, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, 10.0.7]",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, )",
           "ModelContextProtocol": "[1.4.1, 1.4.1]"
         }
       }
