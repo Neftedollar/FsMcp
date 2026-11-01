@@ -36,7 +36,7 @@ def expected_dependencies(package_id: str, version: str) -> dict[str, str]:
     package_specific = {
         "FsMcp.Client": {"FsMcp.Core": version, "ModelContextProtocol": "[1.4.1]"},
         "FsMcp.Core": {
-            "Microsoft.Extensions.Logging.Abstractions": "[10.0.7]",
+            "Microsoft.Extensions.Logging.Abstractions": "10.0.7",
             "ModelContextProtocol": "[1.4.1]",
         },
         "FsMcp.Sampling": {
@@ -46,8 +46,8 @@ def expected_dependencies(package_id: str, version: str) -> dict[str, str]:
         },
         "FsMcp.Server": {
             "FsMcp.Core": version,
-            "Microsoft.Extensions.Hosting": "[10.0.7]",
-            "Microsoft.Extensions.Logging.Console": "[10.0.7]",
+            "Microsoft.Extensions.Hosting": "10.0.7",
+            "Microsoft.Extensions.Logging.Console": "10.0.7",
             "ModelContextProtocol": "[1.4.1]",
             "TypeShape": "10.0.0",
         },

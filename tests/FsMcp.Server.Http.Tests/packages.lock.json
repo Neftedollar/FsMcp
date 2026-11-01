@@ -104,21 +104,6 @@
         "resolved": "10.5.2",
         "contentHash": "Ei+YWV9Ybnps7pR1dgjlG29gelXEwZkhLVAcWmKe6HvXS6LNBYgSdWiY3Hk9OZXYtK34rv/NtLWBQYQGOBQYPQ=="
       },
-      "Microsoft.Extensions.Hosting": {
-        "type": "Transitive",
-        "resolved": "10.0.7",
-        "contentHash": "M/vBpfWcschvS2EUeq7cHfscsxabiGTptXwV7GeSueovGiSoNjyo1j5PMcWuOAAQrRW3nRqxZk8NeumrmpzUBg=="
-      },
-      "Microsoft.Extensions.Logging.Abstractions": {
-        "type": "Transitive",
-        "resolved": "10.0.7",
-        "contentHash": "tIEcQ2gvERrH2KiCjdsVcHGhXt9lIsuDStfOIeZWr7/fP8IXhGiYfx0/80PNI7WPO2IYuFtlZLSlnTS8+/Mchw=="
-      },
-      "Microsoft.Extensions.Logging.Console": {
-        "type": "Transitive",
-        "resolved": "10.0.7",
-        "contentHash": "DA++Es6v6W0HfrOrw+K8WyN6jNnZHp640PDdEvl8yfeVmgflKdn6vSSFvufNUSOuY+M2ZaSUgfY+jUKtNpXcCw=="
-      },
       "Microsoft.Testing.Extensions.Telemetry": {
         "type": "Transitive",
         "resolved": "1.9.0",
@@ -210,7 +195,6 @@
         "type": "Project",
         "dependencies": {
           "FSharp.Core": "[10.1.203, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, 10.0.7]",
           "ModelContextProtocol": "[1.4.1, 1.4.1]"
         }
       },
@@ -219,8 +203,6 @@
         "dependencies": {
           "FSharp.Core": "[10.1.203, )",
           "FsMcp.Core": "[2.0.0, )",
-          "Microsoft.Extensions.Hosting": "[10.0.7, 10.0.7]",
-          "Microsoft.Extensions.Logging.Console": "[10.0.7, 10.0.7]",
           "ModelContextProtocol": "[1.4.1, 1.4.1]",
           "TypeShape": "[10.0.0, )"
         }

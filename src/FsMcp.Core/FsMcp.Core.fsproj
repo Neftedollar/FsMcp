@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" Version="[$(ModelContextProtocolVersion)]" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="[$(MicrosoftExtensionsVersion)]" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="$(MicrosoftExtensionsVersion)" />
   </ItemGroup>
 
 </Project>
